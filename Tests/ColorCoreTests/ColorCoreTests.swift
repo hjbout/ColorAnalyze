@@ -102,6 +102,23 @@ import Testing
 }
 
 @Suite struct HarmonyTests {
+    @Test func aColorInsideTheSectorIsOnTargetAndOutsideItMovesToTheEdge() {
+        let fit = HarmonyFit(kind: .monochromatic, rotation: 100, deviation: 0, tolerance: 10)
+        #expect(fit.shift(for: 108) == 0 && fit.signedDistance(from: 108) == 0)
+        #expect(abs(fit.shift(for: 130) - -20) < 0.01)          // 130° → edge at 110°, not the target at 100°
+        #expect(abs(fit.signedDistance(from: 130) - -20) < 0.01)
+        #expect(abs(fit.shift(for: 80) - 10) < 0.01)
+        let exact = HarmonyFit(kind: .monochromatic, rotation: 100, deviation: 0)
+        #expect(abs(exact.shift(for: 108) - -8) < 0.01)
+    }
+
+    @Test func aWiderSectorGivesASmallerDeviation() throws {
+        let inputs = [HarmonyInput(hue: 20, weight: 1), HarmonyInput(hue: 72, weight: 1)]
+        let exact = try #require(HarmonyDetector.fit(.analogous, to: inputs))
+        let wide = try #require(HarmonyDetector.fit(.analogous, to: inputs, tolerance: 15))
+        #expect(wide.deviation < exact.deviation && wide.tolerance == 15)
+    }
+
     @Test func detectsComplementary() {
         let fit = HarmonyDetector.detect([HarmonyInput(hue: 30, weight: 1), HarmonyInput(hue: 210, weight: 1)])
         #expect(fit?.kind == .complementary)

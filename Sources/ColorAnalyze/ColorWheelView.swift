@@ -287,6 +287,10 @@ struct ColorWheelView: View {
                     Text(kind.displayName).tag(HarmonyKind?.some(kind))
                 }
             }
+            Picker("Targets", selection: $model.harmonySector) {
+                ForEach(HarmonySector.allCases) { Text($0.title).tag($0) }
+            }
+            .help("A color inside the sector around a target counts as on target and is not shifted")
             if let fit {
                 HStack {
                     Text("\(fit.kind.displayName)\(model.harmonyChoice == nil ? " (detected)" : "")")
@@ -672,6 +676,22 @@ struct HarmonyOverlay: View {
             }
             .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
             .shadow(color: .black.opacity(0.6), radius: 1.5)
+
+            if fit.tolerance > 0 {
+                // The sector around each target: colors inside it are on target.
+                Path { path in
+                    for hue in fit.targets {
+                        path.move(to: center)
+                        let steps = max(2, Int(fit.tolerance))
+                        for step in 0...steps {
+                            let h = hue - fit.tolerance + 2 * fit.tolerance * Double(step) / Double(steps)
+                            path.addLine(to: WheelGeometry.point(hue: h, saturation: 1, center: center, radius: radius))
+                        }
+                        path.closeSubpath()
+                    }
+                }
+                .fill(.white.opacity(0.14))
+            }
 
             Path { path in
                 for marker in markers where DxOMapping.harmonyWeight(color: marker.color, share: 1) > 0 {

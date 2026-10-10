@@ -143,7 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //     [--export-colors list.csv|list.json] [--export-colors-excel list.csv]
         //     [--weighting off|moderate|strong] [--wheel rgb|ryb|dxo|oklch] [--intention "warm, calm"]
         //     [--export-dxo-preset grading.preset] [--grading-strength subtle|moderate|strong] [--grading-style neutral|warm-highlights|cool-highlights|teal-orange|warm-overall|cool-overall|faded]
-        //     [--grading-target harmony|series|reference] [--protect 2,5]`
+        //     [--grading-target harmony|series|reference] [--protect 2,5] [--harmony-sector exact|narrow|wide]`
         // `ColorAnalyze --series a.jpg b.jpg … [--series-colors N] [--palette-size N]
         //     [--export-series palette.csv|series.json] [--export-series-photos photos.csv]
         //     [--export-series-report overview.png]`
@@ -160,6 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var photo: String?, graded: String?, report: String?, reference: String?
         var photoColors: Int?
         var protectedNumbers: [Int] = []
+        var sector: HarmonySector?
         var problems: [String] = []
         /// Parses an enum-like option value; a wrong one is reported instead of silently ignored.
         func choice<T>(_ option: String, _ parse: (String) -> T?) -> T? {
@@ -192,6 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let numbers = text.split(separator: ",").compactMap { Int($0) }
                     return numbers.count == text.split(separator: ",").count ? numbers : nil
                 } ?? []
+            case "--harmony-sector": sector = choice(arg) { HarmonySector(rawValue: $0.lowercased()) }
             case "--colors": photoColors = choice(arg) { Int($0).flatMap { (3...12).contains($0) ? $0 : nil } }
             case "--weighting": weighting = choice(arg) { Weighting(rawValue: $0.lowercased()) }
             case "--wheel": wheel = choice(arg) { HueSpace(rawValue: $0.lowercased()) }
@@ -240,6 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.withoutRemembering {
                 model.colorCount = 6
                 model.hueSpace = .rgb
+                model.harmonySector = .narrow
                 model.weighting = .off
                 model.gradingStyle = .neutral
                 model.showPreview = false
@@ -253,6 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             exit(2)
         }
         if let photoColors { model.withoutRemembering { model.colorCount = photoColors } }
+        if let sector { model.withoutRemembering { model.harmonySector = sector } }
         let openedPhoto = photo.flatMap { exists($0) ? $0 : nil }
         if let openedPhoto {
             tasks.append(model.open(URL(fileURLWithPath: openedPhoto),

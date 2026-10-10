@@ -35,7 +35,7 @@ Zoom daarna terug (⌘0), verwijder de dubbele blauwen en zet een marker op de z
 
 ## 4. Lees het wiel en de harmonie
 
-- *Harmony → Auto-detect* kiest het sjabloon dat het best past (hier *Complementary*, fit ±7°). Kies zelf een ander sjabloon of draai het met de handle aan de rand van het wiel.
+- *Harmony → Auto-detect* kiest het sjabloon dat het best past (hier *Complementary*, fit ±7°). Kies zelf een ander sjabloon of draai het met de handle aan de rand van het wiel. Onder **Targets** stel je in hoe breed een doel is: bij *Sector ±10°* (standaard) hoeft een kleur die binnen 10° van het doel valt niet te verschuiven, bij *Exact hue* schuift alles naar de spaak.
 - In de lijst staat per kleur wat er moet gebeuren: *Orange: hue +8° → 29°* betekent dat die kleur 8° richting het doel moet schuiven. **Groen = op doel.**
 - *Skin tone*: kleuren in de huidtintband krijgen een regel erbij. Het is een vuistregel, geen huiddetectie.
 - Het DxO-kanaal en de hue-waarden zijn benaderingen op DxO's eigen kleuras. Controleer ze in PhotoLab.
@@ -67,9 +67,9 @@ Dit zet de algemene tint per toonbereik. Voorbeeld voor de voorbeeldfoto, zoals 
 
 | Toonbereik | Voorstel in ColorAnalyze | Wat je in PhotoLab invult |
 |---|---|---|
-| Shadows | Hue 287 · Sat 10 | Hue **287**, Saturation **10** |
-| Midtones | Hue 111 · Sat 16 | Hue **111**, Saturation **16** |
-| Highlights | Hue 358 · Sat 3 | Hue **358**, Saturation **3** |
+| Shadows | geen voorstel (*already on target*) | niets, laat op 0 |
+| Midtones | Hue 120 · Sat 4 | Hue **120**, Saturation **4** |
+| Highlights | geen voorstel (*already on target*) | niets, laat op 0 |
 
 De voorbeeldfoto zit al dicht bij zijn harmonie (de kleuren zijn gemiddeld 6° van hun doel), dus het voorstel is klein; bij een foto die verder afwijkt zie je grotere waarden. Let ook op dat de Hue van een wiel zelden de tint van het doel is: PhotoLab telt de tint per kleurkanaal op in een breed kleurgebied, en het model kiest de Hue die de kleuren echt dichter bij hun doel brengt (zie de README).
 

@@ -143,12 +143,16 @@ public struct HarmonyFit: Sendable, Equatable {
     /// Weighted RMS distance of the colors to their nearest target, in degrees on the wheel of `space`.
     public var deviation: Double
     public var space: HueSpace
+    /// Half-width of the sector around each target, in degrees on the wheel of `space`. A color inside a sector is on
+    /// target (distance 0, no shift); outside it counts by its distance to the sector's edge. 0 = the exact hue.
+    public var tolerance: Double
 
-    public init(kind: HarmonyKind, rotation: Double, deviation: Double, space: HueSpace = .rgb) {
+    public init(kind: HarmonyKind, rotation: Double, deviation: Double, space: HueSpace = .rgb, tolerance: Double = 0) {
         self.kind = kind
         self.rotation = rotation
         self.deviation = deviation
         self.space = space
+        self.tolerance = tolerance
     }
 
     /// Target positions on the wheel of `space`, in degrees (what the overlay draws).
@@ -163,7 +167,7 @@ public struct HarmonyFit: Sendable, Equatable {
 
     /// Signed distance (degrees on the wheel of `space`) from an sRGB hue to its nearest target.
     public func signedDistance(from rgbHue: Double) -> Double {
-        Self.signedDistance(from: space.position(ofRGBHue: rgbHue), targets: targets)
+        Self.signedDistance(from: space.position(ofRGBHue: rgbHue), targets: targets, tolerance: tolerance)
     }
 
     /// Signed hue shift in **sRGB degrees** that moves `rgbHue` onto its nearest target,
@@ -173,12 +177,18 @@ public struct HarmonyFit: Sendable, Equatable {
         guard let target = targets.min(by: {
             abs(ColorMath.signedAngle(from: position, to: $0)) < abs(ColorMath.signedAngle(from: position, to: $1))
         }) else { return 0 }
-        return ColorMath.signedAngle(from: rgbHue, to: space.rgbHue(atPosition: target))
+        let distance = ColorMath.signedAngle(from: position, to: target)
+        guard abs(distance) > tolerance else { return 0 }   // inside the sector: nothing to do
+        // Move to the near edge of the sector, not to its middle.
+        let edge = target - (distance < 0 ? -tolerance : tolerance)
+        return ColorMath.signedAngle(from: rgbHue, to: space.rgbHue(atPosition: ColorMath.normalizeDegrees(edge)))
     }
 
-    static func signedDistance(from position: Double, targets: [Double]) -> Double {
-        targets.map { ColorMath.signedAngle(from: position, to: $0) }
+    /// Signed distance to the nearest target's sector (0 inside it).
+    static func signedDistance(from position: Double, targets: [Double], tolerance: Double = 0) -> Double {
+        let d = targets.map { ColorMath.signedAngle(from: position, to: $0) }
             .min { abs($0) < abs($1) } ?? 0
+        return abs(d) <= tolerance ? 0 : d - (d < 0 ? -tolerance : tolerance)
     }
 }
 
@@ -188,12 +198,13 @@ public enum HarmonyDetector {
 
     /// Best rotation of `kind` for the given (sRGB) hues on the wheel of `space`,
     /// or nil if there are no weighted inputs.
-    public static func fit(_ kind: HarmonyKind, to inputs: [HarmonyInput], space: HueSpace = .rgb) -> HarmonyFit? {
+    public static func fit(_ kind: HarmonyKind, to inputs: [HarmonyInput], space: HueSpace = .rgb,
+                           tolerance: Double = 0) -> HarmonyFit? {
         let weighted = weightedPositions(inputs, space: space)
         guard !weighted.isEmpty else { return nil }
-        var best = HarmonyFit(kind: kind, rotation: 0, deviation: .infinity, space: space)
+        var best = HarmonyFit(kind: kind, rotation: 0, deviation: .infinity, space: space, tolerance: tolerance)
         for rotation in stride(from: 0.0, to: 360.0, by: 1.0) {
-            let fit = evaluate(kind, rotation: rotation, weighted: weighted, space: space)
+            let fit = evaluate(kind, rotation: rotation, weighted: weighted, space: space, tolerance: tolerance)
             if fit.deviation < best.deviation { best = fit }
         }
         return best
@@ -201,16 +212,16 @@ public enum HarmonyDetector {
 
     /// Fit of `kind` at a fixed rotation (e.g. after the user rotated the overlay).
     public static func evaluate(_ kind: HarmonyKind, rotation: Double, inputs: [HarmonyInput],
-                                space: HueSpace = .rgb) -> HarmonyFit? {
+                                space: HueSpace = .rgb, tolerance: Double = 0) -> HarmonyFit? {
         let weighted = weightedPositions(inputs, space: space)
         guard !weighted.isEmpty else { return nil }
-        return evaluate(kind, rotation: rotation, weighted: weighted, space: space)
+        return evaluate(kind, rotation: rotation, weighted: weighted, space: space, tolerance: tolerance)
     }
 
     /// The harmony that best explains the hues, preferring simpler templates.
-    public static func detect(_ inputs: [HarmonyInput], space: HueSpace = .rgb) -> HarmonyFit? {
+    public static func detect(_ inputs: [HarmonyInput], space: HueSpace = .rgb, tolerance: Double = 0) -> HarmonyFit? {
         HarmonyKind.allCases
-            .compactMap { kind in fit(kind, to: inputs, space: space).map { (fit: $0, cost: cost(of: $0)) } }
+            .compactMap { kind in fit(kind, to: inputs, space: space, tolerance: tolerance).map { (fit: $0, cost: cost(of: $0)) } }
             .min { $0.cost < $1.cost }?.fit
     }
 
@@ -224,12 +235,13 @@ public enum HarmonyDetector {
     }
 
     private static func evaluate(_ kind: HarmonyKind, rotation: Double, weighted: [(position: Double, weight: Double)],
-                                 space: HueSpace) -> HarmonyFit {
-        var fit = HarmonyFit(kind: kind, rotation: ColorMath.normalizeDegrees(rotation), deviation: 0, space: space)
+                                 space: HueSpace, tolerance: Double) -> HarmonyFit {
+        var fit = HarmonyFit(kind: kind, rotation: ColorMath.normalizeDegrees(rotation), deviation: 0, space: space,
+                             tolerance: tolerance)
         let targets = fit.targets
         var sum = 0.0, total = 0.0
         for item in weighted {
-            let d = HarmonyFit.signedDistance(from: item.position, targets: targets)
+            let d = HarmonyFit.signedDistance(from: item.position, targets: targets, tolerance: tolerance)
             sum += item.weight * d * d
             total += item.weight
         }

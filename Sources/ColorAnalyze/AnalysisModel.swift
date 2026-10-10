@@ -17,6 +17,28 @@ struct Marker: Identifiable, Equatable {
 }
 
 /// How much more the subject of the photo counts than the background.
+/// Width of the sector around each harmony target (Matsuda): colors inside it need no shift.
+enum HarmonySector: String, CaseIterable, Identifiable {
+    case exact, narrow, wide
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .exact: "Exact hue"
+        case .narrow: "Sector ±10°"
+        case .wide: "Sector ±20°"
+        }
+    }
+    /// Half-width in degrees.
+    var tolerance: Double {
+        switch self {
+        case .exact: 0
+        case .narrow: 10
+        case .wide: 20
+        }
+    }
+}
+
 enum Weighting: String, CaseIterable, Identifiable {
     case off, moderate, strong
 
@@ -171,6 +193,11 @@ final class AnalysisModel {
         }
     }
     /// The wheel the harmony is computed and drawn on: RGB or the artist's RYB wheel.
+    /// How wide the harmony's targets are: a color inside the sector counts as on target. Remembered.
+    var harmonySector = (AnalysisModel.remembered("harmonySector") as String?).flatMap(HarmonySector.init(rawValue:)) ?? .narrow {
+        didSet { if harmonySector != oldValue { remember(harmonySector.rawValue, as: "harmonySector") } }
+    }
+
     var hueSpace = (AnalysisModel.remembered("hueSpace") as String?).flatMap(HueSpace.init(rawValue:)) ?? .rgb {
         didSet {
             if hueSpace != oldValue {
@@ -908,6 +935,7 @@ final class AnalysisModel {
         hasher.combine(harmonyChoice?.rawValue)
         hasher.combine(harmonyRotationOverride)
         hasher.combine(hueSpace.rawValue)
+        hasher.combine(harmonySector.rawValue)
         hasher.combine(gradingStrength.rawValue)
         hasher.combine(gradingStyle.rawValue)
         hasher.combine(gradingTarget.rawValue)
@@ -1165,14 +1193,15 @@ final class AnalysisModel {
 
     var harmony: HarmonyFit? {
         let inputs = harmonyInputs
-        let kind = harmonyChoice ?? HarmonyDetector.detect(inputs, space: hueSpace)?.kind
+        let tolerance = harmonySector.tolerance
+        let kind = harmonyChoice ?? HarmonyDetector.detect(inputs, space: hueSpace, tolerance: tolerance)?.kind
         guard let kind else { return nil }
         if let rotation = harmonyRotationOverride {
-            return HarmonyDetector.evaluate(kind, rotation: rotation, inputs: inputs, space: hueSpace)
-                ?? HarmonyFit(kind: kind, rotation: rotation, deviation: 0, space: hueSpace)
+            return HarmonyDetector.evaluate(kind, rotation: rotation, inputs: inputs, space: hueSpace, tolerance: tolerance)
+                ?? HarmonyFit(kind: kind, rotation: rotation, deviation: 0, space: hueSpace, tolerance: tolerance)
         }
-        return HarmonyDetector.fit(kind, to: inputs, space: hueSpace)
-            ?? HarmonyFit(kind: kind, rotation: 0, deviation: 0, space: hueSpace)
+        return HarmonyDetector.fit(kind, to: inputs, space: hueSpace, tolerance: tolerance)
+            ?? HarmonyFit(kind: kind, rotation: 0, deviation: 0, space: hueSpace, tolerance: tolerance)
     }
 
     /// How well the graded version matches the same harmony targets as the original.
@@ -1183,6 +1212,6 @@ final class AnalysisModel {
                 HarmonyInput(hue: $0.hsb.h, weight: DxOMapping.harmonyWeight(color: $0, share: marker.share))
             }
         }
-        return HarmonyDetector.evaluate(fit.kind, rotation: fit.rotation, inputs: inputs, space: fit.space)
+        return HarmonyDetector.evaluate(fit.kind, rotation: fit.rotation, inputs: inputs, space: fit.space, tolerance: fit.tolerance)
     }
 }
