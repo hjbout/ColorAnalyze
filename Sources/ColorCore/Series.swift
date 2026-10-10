@@ -119,7 +119,8 @@ public enum SeriesAnalyzer {
         return SeriesMatch(
             index: index, deltaE: d,
             hueShift: chromatic ? ColorMath.signedAngle(from: color.hsb.h, to: shared.hsb.h) : nil,
-            saturationChange: color.chroma > 0 ? 100 * (shared.chroma - color.chroma) / color.chroma : 0,
+            // Relative to at least `neutralChroma`, so a nearly grey color does not give an absurd percentage.
+            saturationChange: 100 * (shared.chroma - color.chroma) / max(color.chroma, DxOMapping.neutralChroma),
             lightnessChange: shared.lightness - color.lightness)
     }
 
@@ -169,7 +170,7 @@ public enum SeriesAnalyzer {
             unmatchedShare: unmatched,
             hasSuggestion: reliable,
             hueShift: reliable && sumHueWeight > 0.02 ? atan2(sumSin, sumCos) * 180 / .pi : nil,
-            saturationChange: reliable && sumChromaPhoto > 0 ? 100 * sumChromaShift / sumChromaPhoto : 0,
+            saturationChange: reliable && sumChromaPhoto > 0 ? 100 * sumChromaShift / max(sumChromaPhoto, DxOMapping.neutralChroma * sumWeight) : 0,
             lightnessChange: reliable && sumWeight > 0 ? sumLightness / sumWeight : 0,
             matches: matches
         )

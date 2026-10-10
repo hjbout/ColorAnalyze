@@ -607,14 +607,14 @@ final class AnalysisModel {
         let records = markers.enumerated().map { index, marker in
             ColorRecord(number: index + 1, location: marker.location, color: marker.color, share: marker.share,
                         areaShare: isWeighted ? marker.areaShare : nil,
-                        after: afterColor(for: marker), harmony: fit)
+                        after: afterImage == nil ? nil : afterColor(for: marker), harmony: fit)
         }
         return ColorExport(
             photo: image.url.lastPathComponent,
             graded: afterImage?.url.path,
             weighting: isWeighted ? weighting.rawValue : nil,
             intention: intention,
-            harmony: fit.map { .init(fit: $0, autoDetected: harmonyChoice == nil, fitAfter: afterHarmony) },
+            harmony: fit.map { .init(fit: $0, autoDetected: harmonyChoice == nil, fitAfter: afterImage == nil ? nil : afterHarmony) },
             colors: records
         )
     }

@@ -247,7 +247,7 @@ open build/ColorAnalyze.app
 ./scripts/test.sh               # unit tests (Swift Testing)
 ```
 
-`ColorAnalyze.app/Contents/MacOS/ColorAnalyze /path/to/photo.jpg` opens a photo directly. JPEG, PNG, TIFF, HEIC and camera RAW (via macOS's RAW decoder) are supported.
+`ColorAnalyze.app/Contents/MacOS/ColorAnalyze /path/to/photo.jpg` opens a photo directly. Runs with an export option (batch) ignore the remembered window settings and start from the defaults (6 colors, RGB wheel, no weighting, neutral style, moderate strength); use `--colors N`, `--weighting`, `--wheel`, `--grading-style`, `--grading-strength` to change them. A wrong option value, an unknown option or a missing file stops with exit code 2, a failed export with exit code 1. JPEG, PNG, TIFF, HEIC and camera RAW (via macOS's RAW decoder) are supported.
 
 ## How the analysis works
 

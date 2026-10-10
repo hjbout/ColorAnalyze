@@ -63,13 +63,13 @@ Wil je de preset niet gebruiken, of zelf bepalen wat je overneemt? Voer de voors
 
 **Deel 1: Color Grading, de grote lijnen (3 handelingen)**
 
-Dit zet de algemene tint per toonbereik. Voorbeeld voor de voorbeeldfoto, zoals ColorAnalyze die voorstelt:
+Dit zet de algemene tint per toonbereik. Voorbeeld voor de voorbeeldfoto, zoals ColorAnalyze die kan voorstellen (de getallen hangen af van je markers, het aantal kleuren, de sterkte en de stijl; die van jou kunnen dus afwijken):
 
 | Toonbereik | Voorstel in ColorAnalyze | Wat je in PhotoLab invult |
 |---|---|---|
-| Shadows | Hue 294 · Sat 1 | Hue **294**, Saturation **1** |
-| Midtones | Hue 100 · Sat 4 | Hue **100**, Saturation **4** |
-| Highlights | Hue 85 · Sat 1 | Hue **85**, Saturation **1** |
+| Shadows | Hue 287 · Sat 10 | Hue **287**, Saturation **10** |
+| Midtones | Hue 111 · Sat 16 | Hue **111**, Saturation **16** |
+| Highlights | Hue 358 · Sat 3 | Hue **358**, Saturation **3** |
 
 De voorbeeldfoto zit al dicht bij zijn harmonie (de kleuren zijn gemiddeld 6° van hun doel), dus het voorstel is klein; bij een foto die verder afwijkt zie je grotere waarden. Let ook op dat de Hue van een wiel zelden de tint van het doel is: PhotoLab telt de tint per kleurkanaal op in een breed kleurgebied, en het model kiest de Hue die de kleuren echt dichter bij hun doel brengt (zie de README).
 

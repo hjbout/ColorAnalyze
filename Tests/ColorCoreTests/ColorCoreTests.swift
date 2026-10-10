@@ -933,6 +933,13 @@ import Testing
          SharedColor(centroid: SeriesTests.hue(190, s: 0.5, v: 0.6), share: 0.4, presence: 3, photoCount: 3)]
     }
 
+    @Test func nearlyGreyColorDoesNotGiveAnAbsurdSaturationChange() throws {
+        let grey = SeriesTests.hue(30, s: 0.01, v: 0.5)
+        let palette = [SharedColor(centroid: SeriesTests.hue(30, s: 0.2, v: 0.5), share: 1, presence: 1, photoCount: 1)]
+        let match = try #require(SeriesAnalyzer.match(grey, against: palette))
+        #expect(abs(match.saturationChange) < 100)
+    }
+
     @Test func findsTheCloseColorAndTheWayThere() throws {
         // A slightly more yellow, less saturated, darker orange than the palette's.
         let match = try #require(SeriesAnalyzer.match(SeriesTests.hue(36, s: 0.6, v: 0.7), against: Self.palette()))

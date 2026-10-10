@@ -158,6 +158,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return argv[i]
         }
         var photo: String?, graded: String?, report: String?, reference: String?
+        var photoColors: Int?
+        var problems: [String] = []
+        /// Parses an enum-like option value; a wrong one is reported instead of silently ignored.
+        func choice<T>(_ option: String, _ parse: (String) -> T?) -> T? {
+            guard let text = value() else { problems.append("\(option) needs a value"); return nil }
+            if let result = parse(text) { return result }
+            problems.append("\(option): unknown value “\(text)”")
+            return nil
+        }
         var addMissing = 0
         var weighting: Weighting?
         var wheel: HueSpace?
@@ -177,20 +186,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "--graded": graded = value()
             case "--reference": reference = value()
             case "--add-missing": addMissing = min(12, max(0, value().flatMap(Int.init) ?? 0))
-            case "--weighting": weighting = value().flatMap { Weighting(rawValue: $0.lowercased()) }
-            case "--wheel": wheel = value().flatMap { HueSpace(rawValue: $0.lowercased()) }
+            case "--colors": photoColors = choice(arg) { Int($0).flatMap { (3...12).contains($0) ? $0 : nil } }
+            case "--weighting": weighting = choice(arg) { Weighting(rawValue: $0.lowercased()) }
+            case "--wheel": wheel = choice(arg) { HueSpace(rawValue: $0.lowercased()) }
             case "--export-report": report = value()
             case "--export-colors": if let path = value() { colors.append((path, nil)) }
             case "--export-colors-excel": if let path = value() { colors.append((path, .colorsCSVExcel)) }
             case "--export-dxo-preset": if let path = value() { colors.append((path, .dxoPreset)) }
             case "--grading-strength":
-                gradingStrength = value().flatMap { ColorGradingSuggestion.Strength(rawValue: $0.lowercased()) }
+                gradingStrength = choice(arg) { ColorGradingSuggestion.Strength(rawValue: $0.lowercased()) }
             case "--grading-style":
-                gradingStyle = value().flatMap { text in
+                gradingStyle = choice(arg) { text in
                     GradingStyle.allCases.first { $0.rawValue.lowercased() == text.lowercased().replacingOccurrences(of: "-", with: "") }
                 }
             case "--grading-target":
-                gradingTarget = value().flatMap { $0.lowercased() == "reference" ? .series : AnalysisModel.GradingTarget(rawValue: $0.lowercased()) }
+                gradingTarget = choice(arg) { $0.lowercased() == "reference" ? .series : AnalysisModel.GradingTarget(rawValue: $0.lowercased()) }
             case "--series":
                 while i < argv.count, !argv[i].hasPrefix("--") {
                     seriesFiles.append(argv[i])
@@ -210,13 +220,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "--export-series-photos":
                 if let path = value() { seriesExports.append((path, .photosCSV)) }
             default:
-                if !arg.hasPrefix("-"), photo == nil { photo = arg }
+                if arg.hasPrefix("-") { problems.append("unknown option \(arg)") }
+                else if photo == nil { photo = arg }
+                else { problems.append("unexpected argument \(arg)") }
             }
         }
 
         let exists = { (path: String) in FileManager.default.fileExists(atPath: path) }
         let hasExports = report != nil || !colors.isEmpty || !seriesExports.isEmpty || saveSeriesPath != nil
         var tasks: [Task<Void, Never>] = []
+        // Batch runs must not depend on what was last chosen in the window: start from the defaults.
+        if hasExports {
+            model.withoutRemembering {
+                model.colorCount = 6
+                model.hueSpace = .rgb
+                model.weighting = .off
+                model.gradingStyle = .neutral
+                model.showPreview = false
+            }
+            model.useGradingStrength(.moderate)
+        }
+        for path in [photo, graded, reference].compactMap({ $0 }) + seriesFiles + [openSeriesPath].compactMap({ $0 })
+        where !exists(path) { problems.append("file not found: \(path)") }
+        if hasExports, !problems.isEmpty {
+            for problem in problems { FileHandle.standardError.write(Data("ColorAnalyze: \(problem)\n".utf8)) }
+            exit(2)
+        }
+        if let photoColors { model.withoutRemembering { model.colorCount = photoColors } }
         let openedPhoto = photo.flatMap { exists($0) ? $0 : nil }
         if let openedPhoto {
             tasks.append(model.open(URL(fileURLWithPath: openedPhoto),
@@ -279,6 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let saveSeriesPath { try series.save(to: URL(fileURLWithPath: saveSeriesPath)) }
             } catch {
                 FileHandle.standardError.write(Data("Export failed: \(error.localizedDescription)\n".utf8))
+                exit(1)
             }
             NSApp.terminate(nil)
         }
