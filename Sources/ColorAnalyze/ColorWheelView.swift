@@ -703,8 +703,9 @@ struct HarmonyOverlay: View {
             .shadow(color: .black.opacity(0.6), radius: 1.5)
 
             if fit.tolerance > 0 {
-                // The sector around each target: colors inside it are on target.
-                Path { path in
+                // The sector around each target: colors inside it are on target. Drawn as a light fill with an edge in a dark and
+                // a light line, so it shows on the pale middle and on the saturated rim alike.
+                let wedges = Path { path in
                     for hue in fit.targets {
                         path.move(to: center)
                         let steps = max(2, Int(fit.tolerance))
@@ -715,7 +716,9 @@ struct HarmonyOverlay: View {
                         path.closeSubpath()
                     }
                 }
-                .fill(.white.opacity(0.14))
+                wedges.fill(.white.opacity(0.30))
+                wedges.stroke(.black.opacity(0.45), lineWidth: 2.5)
+                wedges.stroke(.white.opacity(0.95), lineWidth: 1)
             }
 
             Path { path in
