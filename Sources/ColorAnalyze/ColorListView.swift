@@ -2,6 +2,20 @@ import AppKit
 import ColorCore
 import SwiftUI
 
+/// Remembers which color was selected when the mouse went down, before the list applies the click.
+@MainActor private final class MouseDownMonitor {
+    static let shared = MouseDownMonitor()
+    private var monitor: Any?
+
+    func start(_ model: AnalysisModel) {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            MainActor.assumeIsolated { model.selectionAtMouseDown = model.selectedMarkerID }
+            return event
+        }
+    }
+}
+
 struct ColorListView: View {
     @Environment(AnalysisModel.self) private var model
 
@@ -15,6 +29,10 @@ struct ColorListView: View {
                              after: model.afterColor(for: marker), series: model.seriesInfo(for: marker), referenceTitle: model.referenceTitle, afterLabel: model.afterLabel)
                         .tag(marker.id)
                         .onHover { model.hover(marker.id, inside: $0) }
+                        // A plain click on the selected color deselects it, like a command-click.
+                        .simultaneousGesture(TapGesture().onEnded {
+                            if model.selectionAtMouseDown == marker.id { model.selectedMarkerID = nil }
+                        })
                         .contextMenu {
                             Button("Copy Hex") { copy(marker.color.hex) }
                             Button(model.isProtected(marker) ? "Unprotect Color" : "Protect Color (keep its hue)") { model.toggleProtected(marker.id) }
@@ -44,6 +62,7 @@ struct ColorListView: View {
             }
         }
         .listStyle(.inset)
+        .onAppear { MouseDownMonitor.shared.start(model) }
     }
 }
 

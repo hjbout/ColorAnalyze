@@ -5,6 +5,7 @@ import SwiftUI
 @main
 struct ColorAnalyzeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    @AppStorage(PaneTab.storageKey) private var paneTab: PaneTab = .harmony
 
     var body: some Scene {
         Window("ColorAnalyze", id: "main") {
@@ -45,6 +46,13 @@ struct ColorAnalyzeApp: App {
                     .keyboardShortcut("0", modifiers: .command)
                 Button("Actual Pixels") { delegate.model.zoomToActualPixels() }
                     .keyboardShortcut("1", modifiers: .command)
+                Divider()
+                Button("Show Harmony") { paneTab = .harmony }
+                    .keyboardShortcut("1", modifiers: [.command, .option])
+                Button("Show Grading") { paneTab = .grading }
+                    .keyboardShortcut("2", modifiers: [.command, .option])
+                Button("Show PhotoLab Settings") { paneTab = .photoLab }
+                    .keyboardShortcut("3", modifiers: [.command, .option])
                 Divider()
             }
             CommandMenu("Analysis") {

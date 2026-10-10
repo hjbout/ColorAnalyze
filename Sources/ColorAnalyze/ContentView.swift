@@ -14,9 +14,9 @@ struct ContentView: View {
             PhotoMarkerView()
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
             // The wheel and the list keep the width they have at the smallest window; a bigger window gives the photo more room.
-            ColorWheelView()
-                .frame(minWidth: 360, idealWidth: 360, maxWidth: 360, maxHeight: .infinity)
             ColorListView()
+                .frame(minWidth: 360, idealWidth: 360, maxWidth: 360, maxHeight: .infinity)
+            ColorWheelView()
                 .frame(minWidth: 360, idealWidth: 360, maxWidth: 360, maxHeight: .infinity)
         }
         .frame(minWidth: 1100, minHeight: 640)

@@ -11,8 +11,8 @@ Start de app (`build/ColorAnalyze.app`, zie de README) en open de foto met **⌘
 Wat je ziet:
 
 - **Links** de foto met genummerde markers op de dominante kleurvlakken.
-- **Midden** het kleurwiel met dezelfde markers, de huidtintlijn, een helderheidsbalk en de gedetecteerde harmonie (hier *Complementary*, oranje ↔ blauw: de klassieke zonsondergang).
-- **Rechts** de lijst: hex, RGB, HSL, aandeel in de foto, het DxO-kanaal (bijv. *Blue*, *Orange*) en het toonbereik (Shadows / Midtones / Highlights).
+- **Midden** de lijst: hex, RGB, HSL, aandeel in de foto, het DxO-kanaal (bijv. *Blue*, *Orange*) en het toonbereik (Shadows / Midtones / Highlights).
+- **Rechts** het kleurwiel met dezelfde markers, de huidtintlijn en een helderheidsbalk. Daaronder drie tabs, van links naar rechts in de volgorde waarin je werkt: **Harmony** (de gedetecteerde harmonie, hier *Complementary*, oranje ↔ blauw: de klassieke zonsondergang), **Grading** (waar de grading op mikt, stijl, voorspelling, preview) en **PhotoLab** (alle waarden die je in PhotoLab invult).
 
 ## 2. Controleer wat de analyse mist
 
@@ -42,9 +42,9 @@ Zoom daarna terug (⌘0), verwijder de dubbele blauwen en zet een marker op de z
 
 ## 5. Naar DxO PhotoLab
 
-Onder het wiel staat het vak **DxO Color Grading** met per toonbereik een voorgestelde **Hue** en **Sat**. Er zijn twee manieren om dat in PhotoLab te krijgen. Beide geven een startpunt, geen recept: stel altijd bij op je oog en je intentie.
+De tab **PhotoLab** onder het wiel toont onder **Color Grading** per toonbereik een voorgestelde **Hue** en **Sat**. Er zijn twee manieren om dat in PhotoLab te krijgen. Beide geven een startpunt, geen recept: stel altijd bij op je oog en je intentie.
 
-**Eerst kijken wat het voorstel doet:** zet onder het wiel **Preview on the photo** aan (of druk op `P`). Rechts van de verdeellijn zie je de foto met de voorgestelde waarden toegepast, links het origineel; sleep de lijn om te vergelijken. Met *×2* of *×4* worden de tinten overdreven, handig als het voorstel klein is. Sinds de kalibratie klopt de preview goed met PhotoLab (zie de README), en met de preview aan zie je op het wiel ook waar elke kleur volgens het model terechtkomt (stippellijn-bolletjes) en in de lijst een regel *Predicted …* met de huidtintband voor en na. Onder het voorstel staat hoe ver de kleuren van hun doel zijn, nu en na de grading. Je ziet meteen of bijvoorbeeld het rode bootje oranje wordt.
+**Eerst kijken wat het voorstel doet:** zet in de tab **Grading** **Preview on the photo** aan (of druk op `P`). Rechts van de verdeellijn zie je de foto met de voorgestelde waarden toegepast, links het origineel; sleep de lijn om te vergelijken. Met *×2* of *×4* worden de tinten overdreven, handig als het voorstel klein is. Sinds de kalibratie klopt de preview goed met PhotoLab (zie de README), en met de preview aan zie je op het wiel ook waar elke kleur volgens het model terechtkomt (stippellijn-bolletjes) en in de lijst een regel *Predicted …* met de huidtintband voor en na. Boven de preview-schakelaar staat hoe ver de kleuren van hun doel zijn, nu en na de grading. Je ziet meteen of bijvoorbeeld het rode bootje oranje wordt.
 
 **Een stijl erbij:** naast de sterkte staat in hetzelfde vak het menu **Style**. *Neutral* is alleen "kleuren naar hun doel". Kies *Warm highlights, cool shadows* (of andersom) en de grading geeft ook de shadows en highlights een eigen zweem, bijvoorbeeld warme lichten tegen koele schaduwen, ook als die bereiken zelf geen kleuren hebben. Er zijn er meer: *Teal & orange (cinematic)* is hetzelfde met sterkere kleuren, *Warm overall* en *Cool overall* leggen een zweem over de hele foto met het **Master**-wiel (in PhotoLab het wiel *Global* in het Color Grading-palet; het vak noemt het *Master*), ten koste van de kleurfit, en *Faded (lighter shadows)* tilt de schaduwen op zonder zweem, met de schuifregelaars **Blacks** en **Shadows** van het palet **Light** (module *Selective Tone*). Het vak toont daarvoor een blok *Light palette, Selective Tone*; die twee waarden zet je met de hand in (een Color Grading-preset kan ze niet dragen). Een pixel die precies zwart is blijft zwart. Staat er in je **Intention** een woord als *warm*, *warme avond* of *koel*, dan stelt de app de passende stijl zelf voor, met een knop **Use**; er verandert niets tot je klikt. Dat gaat ten koste van een stukje van de kleurfit; de regel *Predicted* onder het voorstel laat zien hoeveel. Kijk altijd in de preview.
 
@@ -61,7 +61,7 @@ Wil je de preset niet gebruiken, of zelf bepalen wat je overneemt? Voer de voors
 0. Staat er in het vak *DxO Color Grading* een waarschuwing over een kleurzweem in de neutrale delen? Corrigeer dan eerst de witbalans in PhotoLab (de waarschuwing zegt in welke richting) en analyseer opnieuw. Op een bewust gekleurde scène, zoals een zonsondergang, mag je haar negeren.
 
 1. Doe eerst de basiscorrecties in PhotoLab: **witbalans, belichting en contrast**. Een witbalansverschuiving verschuift alle kleuren, dus analyseer en grade pas daarna. (Analyseer bij voorkeur een kleine export uit PhotoLab, bijvoorbeeld 2000 px, en niet de RAW zelf.)
-2. Houd het ColorAnalyze-venster open naast PhotoLab. Alles wat je nodig hebt staat in het vak **DxO Color Grading** (onder het wiel) en in de kleurenlijst (rechts).
+2. Houd het ColorAnalyze-venster open naast PhotoLab. Alles wat je in PhotoLab instelt staat in de tab **PhotoLab** onder het wiel (⌥⌘3).
 
 **Deel 1: Color Grading, de grote lijnen (3 handelingen)**
 
@@ -86,7 +86,7 @@ De Hue-getallen zijn PhotoLabs eigen tint (de HSV-tint in Rec.2020, gemeten met 
 
 **Deel 2: HSL, per kleur bijsturen (optioneel)**
 
-Wil je een kleur dichter naar het doel schuiven, bijvoorbeeld omdat één kleur er na deel 1 nog uitspringt? Onder het wiel staat het vak **HSL in PhotoLab: Hue per channel**. Daar staat per HSL-kanaal hoeveel graden je de Hue moet draaien, al omgerekend naar PhotoLabs eigen ring, bijvoorbeeld *Orange Hue +4° (colors 5, 8, 9)* (de getallen hangen af van je foto en je markers). Een kanaal verschijnt alleen als het minstens 2° moet bewegen; neutrale kleuren horen daar niet in (die stuur je met deel 1). Zitten er kleuren in één kanaal die tegengestelde kanten op willen, dan staat er een oranje waarschuwing: één bolletje kan ze dan niet alle bedienen.
+Wil je een kleur dichter naar het doel schuiven, bijvoorbeeld omdat één kleur er na deel 1 nog uitspringt? Onderaan de tab **PhotoLab** staat **HSL: Hue per channel**. Daar staat per HSL-kanaal hoeveel graden je de Hue moet draaien, al omgerekend naar PhotoLabs eigen ring, bijvoorbeeld *Orange Hue +4° (colors 5, 8, 9)* (de getallen hangen af van je foto en je markers). Een kanaal verschijnt alleen als het minstens 2° moet bewegen; neutrale kleuren horen daar niet in (die stuur je met deel 1). Zitten er kleuren in één kanaal die tegengestelde kanten op willen, dan staat er een oranje waarschuwing: één bolletje kan ze dan niet alle bedienen.
 
 1. Open in PhotoLab het palet **HSL**.
 2. Kies onder **Channel** (de gekleurde bolletjes) het kanaal uit het vak in ColorAnalyze (hier *Red*, *Orange* of *Blue*).

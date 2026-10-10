@@ -66,7 +66,7 @@ extension ReportRenderer {
     }
 }
 
-/// Static layout of the window: photo(s) on the left, wheel in the middle, color list on the right.
+/// Static layout of the window: photo(s) on the left, color list in the middle, wheel on the right.
 struct ReportView: View {
     let data: ReportData
 
@@ -84,8 +84,8 @@ struct ReportView: View {
             header
             HStack(alignment: .top, spacing: spacing) {
                 photos.frame(width: photoWidth)
-                wheelColumn.frame(width: wheelColumnWidth)
                 list.frame(width: listWidth)
+                wheelColumn.frame(width: wheelColumnWidth)
             }
             footer
         }

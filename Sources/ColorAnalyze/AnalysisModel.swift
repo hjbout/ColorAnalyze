@@ -346,6 +346,9 @@ final class AnalysisModel {
     /// is a macro that the Command Line Tools cannot expand).
     @ObservationIgnored var dragStart: CGPoint?
 
+    /// Selected color when the mouse last went down in the color list (view state, see `dragStart`).
+    @ObservationIgnored var selectionAtMouseDown: Marker.ID?
+
     /// Marker sample radius as a fraction of the photo's short side.
     let sampleRadius = 0.015
 
