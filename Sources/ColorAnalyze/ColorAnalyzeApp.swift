@@ -309,6 +309,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let gradingStrength { model.useGradingStrength(gradingStrength) }
             if let gradingStyle { model.withoutRemembering { model.gradingStyle = gradingStyle } }
             if let gradingTarget { model.gradingTarget = gradingTarget }
+            // Problems that the windows show in an alert (a subject that was not found, photos that could not be read)
+            // go to stderr in a batch run, where nobody sees a window.
+            if hasExports {
+                for message in [model.errorMessage, series.errorMessage].compactMap({ $0 }) {
+                    FileHandle.standardError.write(Data("ColorAnalyze: \(message)\n".utf8))
+                }
+            }
             guard hasExports else {
                 if !seriesURLs.isEmpty || openedSeries != nil { series.requestWindow() }
                 return

@@ -169,7 +169,7 @@ Large calm areas (sky, wall, field) dominate a plain pixel count, while the colo
 
 **Show Subject Map** (`M`) darkens everything outside the detected subject, so you can see what the weighting is based on. Changing the weighting re-analyzes the photo and resets the markers, like changing the number of colors; weighting is part of the saved session, the PNG report subtitle and the JSON export (`weighting`). Command line: `--weighting off|moderate|strong` (overrides a saved session).
 
-Saliency measures visual attention (contrast, color, position), not "the person" or "the product": a bright background object can pull weight away from the real subject. Check the subject map, and add a marker by hand where the weighting misses.
+If the subject cannot be detected in a photo, the window says so and that photo's colors count unweighted (in the series window the message lists the photos; in a batch run it goes to stderr). Saliency measures visual attention (contrast, color, position), not "the person" or "the product": a bright background object can pull weight away from the real subject. Check the subject map, and add a marker by hand where the weighting misses.
 
 ## Suggest a marker for a missing color
 

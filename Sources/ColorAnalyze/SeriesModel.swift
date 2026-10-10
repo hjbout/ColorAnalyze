@@ -12,6 +12,8 @@ struct SeriesItem: Identifiable, @unchecked Sendable {
     let thumbnail: CGImage
     let analysis: PixelBuffer
     var saliency: [Float]?
+    /// The subject could not be detected although subject weighting was on: the colors are not weighted.
+    var saliencyFailed = false
     var colors: [SeriesColor]
 }
 
@@ -227,6 +229,7 @@ final class SeriesModel {
         if !failed.isEmpty {
             errorMessage = "Could not read: " + failed.joined(separator: ", ")
         }
+        reportSaliencyFailures()
         if loaded.contains(where: { $0 != nil }) { markEdited() }
         recompute()
         isBusy = false
@@ -239,9 +242,11 @@ final class SeriesModel {
         let saliency = strength > 0
             ? try? Saliency.attentionMap(for: image.display, width: image.analysis.width, height: image.analysis.height)
             : nil
-        return SeriesItem(url: url, thumbnail: thumbnail(of: image.display, maxDimension: 360),
-                          analysis: image.analysis, saliency: saliency,
-                          colors: dominantColors(in: image.analysis, saliency: saliency, count: count, strength: strength))
+        var item = SeriesItem(url: url, thumbnail: thumbnail(of: image.display, maxDimension: 360),
+                              analysis: image.analysis, saliency: saliency,
+                              colors: dominantColors(in: image.analysis, saliency: saliency, count: count, strength: strength))
+        item.saliencyFailed = strength > 0 && saliency == nil
+        return item
     }
 
     nonisolated private static func dominantColors(in buffer: PixelBuffer, saliency: [Float]?, count: Int,
@@ -274,7 +279,7 @@ final class SeriesModel {
             var updated = items
             for index in updated.indices {
                 let item = updated[index]
-                if strength > 0, item.saliency == nil {
+                if strength > 0, item.saliency == nil, !item.saliencyFailed {
                     // The subject map needs the photo itself: read it again.
                     let url = item.url
                     if var fresh = await Task.detached(priority: .userInitiated, operation: {
@@ -292,9 +297,20 @@ final class SeriesModel {
                 progressDone += 1
             }
             items = updated
+            reportSaliencyFailures()
             recompute()
             isBusy = false
         }
+    }
+
+    /// Says so when subject weighting is on but the subject could not be detected in some photos (their colors count unweighted).
+    private func reportSaliencyFailures() {
+        guard weighting.strength > 0 else { return }
+        let names = items.filter(\.saliencyFailed).map(\.url.lastPathComponent)
+        guard !names.isEmpty else { return }
+        let shown = names.prefix(5).joined(separator: ", ") + (names.count > 5 ? " and \(names.count - 5) more" : "")
+        let message = "The subject could not be detected in \(shown), so their colors are not weighted."
+        errorMessage = errorMessage.map { $0 + "\n" + message } ?? message
     }
 
     private func recompute() {
