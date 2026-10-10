@@ -1,0 +1,266 @@
+# ColorAnalyze
+
+macOS app that finds the dominant colors in a photo as a starting point for color grading in DxO PhotoLab.
+
+- **Left** – the photo with numbered markers on the dominant color areas. Drag a marker to sample another spot, double-click to add one, select + ⌫ to remove. Let go of the selection with **Esc** (*Analysis ▸ Deselect Color*), by clicking anywhere on the photo pane or the wheel that is not a marker (also the grey beside the photo), or by ⌘-clicking the selected row in the list.
+- **Middle** – HSB color wheel (hue = angle, red at 3 o'clock, counter-clockwise; saturation = radius) with the same markers, sized by coverage. Below it: L* strip split into Shadows / Midtones / Highlights, and the harmony picker (auto-detect or fixed; drag the ◆ handle to rotate).
+- **Right** – per color: hex (copy), RGB, HSL, coverage %, DxO HSL channel, Color Grading tonal range, and the hue shift that puts it on the harmony.
+
+New here? Start with the [tutorial](docs/TUTORIAL.md) (Dutch, with a sample photo).
+
+## Series consistency
+
+For a set of photos that should look like one series (a shoot, a portfolio, a wedding): **Series** in the toolbar, **Series ▸ Show Series Window** (⇧⌘S) or **Series ▸ Analyze Series…** (⌥⌘O) opens a second window; add photos with **Add Photos** or drop them on it. **A whole folder** works too: **Series ▸ Analyze Folder…** (⌥⇧⌘O), a folder chosen in *Add Photos*, or a folder dropped on the window adds every photo directly in it (JPEG, PNG, HEIC, TIFF and camera RAW; sidecars such as `.dop` and `.xmp`, hidden files and subfolders are skipped), sorted like in Finder (IMG_2 before IMG_10). Command line: `--series /path/to/folder`. A big RAW folder takes a while: RAW decoding is the slow part, and the window shows the progress. Each photo is analyzed like in the main window (3–10 colors, optional subject weighting), then:
+
+- **Shared palette** (right): the dominant colors of all photos clustered into 2–12 recurring colors (every photo counts equally), with share of the series, DxO channel / tonal range and **presence** — in how many photos a color near it occurs. A color that is in only a few photos is not part of the series' look.
+- **Per photo** (left): the photo's palette as a strip, a **consistency score** (100 = its colors coincide with the shared palette; Δ is the mean OKLab distance), the share without a counterpart in the palette (a unique subject, a different location) and — when at least 60 % of the photo matches — a **starting point for aligning it**: *Hue +8° · Saturation +4% · Lightness −2* (hue in sRGB degrees, saturation as chroma change, lightness in L* points; positive saturation/lightness = the photo is less saturated / darker than the series). A photo that matches less is marked *too different*, because nearest-color pairs stop following the same hue family. The numbers are averages over the matched colors, so treat them as a global starting point; check per color in the main window.
+- **Wheel** (middle): the shared palette as numbered badges and every photo's colors as small dots (RGB, RYB, DxO or OKLCH wheel). Select a photo to see its dots on top with dashed links to the palette colors they were matched with.
+- **Sort by Score** lists the least consistent photos first. Double-click a photo (or *Open in Analyzer*) to continue in the main window; right-click for *Show in Finder* / *Remove*.
+- **Export**: *Overview as PNG* (⌃⇧⌘E, or **Series ▸ Export Series Overview as PNG…**), *Series as JSON* (settings, palette, per-photo scores and colors), *Shared Palette as CSV*, *Photo Table as CSV*, with a *CSV for Excel (;)* switch.
+
+The **PNG overview** is one 3616 px wide image: the shared palette (two columns, with presence), the wheel with the palette badges and every photo's colors as dots, a short reading guide, and a card for every photo (thumbnail, palette strip, score, Δ, alignment suggestion), three per row, in the order shown in the window (use *Sort by Score* first to put the outliers up front). Its height grows with the number of photos.
+
+**Saving a series**: **Series ▸ Save Series** (⌃⌘S, or the toolbar button) writes a small JSON file (`Name.coloranalyze-series.json`) with the photo list and the settings (colors per photo, palette size, subject weighting, wheel, sort order). **Open Series…** (⌃⌘O) or dropping the file on the series window loads it again: the photos are read and analyzed anew, so the colors always match the current analysis. Each photo is stored with its absolute path *and* its path relative to the series file; if you moved the folder with the file, the photos are still found, and a photo that cannot be found is left out with a message (the title then shows *Edited*, saving forgets it). The title shows the file name, the number of photos and *Edited* while there are unsaved changes; opening another series asks first if there are. *Save Series As…* is ⌃⇧⌘S.
+
+Command line: `ColorAnalyze --open-series saved.json [--series more.jpg …] [--save-series new.json] [--export-series …]`; a series saved this way can also be combined with `--series` photos, which are added after the saved ones.
+
+Without a saved file the series is gone when you quit; it is quick to rebuild. Command line: `ColorAnalyze --series a.jpg b.jpg c.jpg [--series-colors 5] [--palette-size 6] [--weighting moderate] --export-series series.json|palette.csv --export-series-photos photos.csv --export-series-report overview.png`.
+
+## Wide gamut (Display P3)
+
+Photos exported from DxO in Display P3 or Adobe RGB contain colors that sRGB cannot represent. Earlier steps clipped them to sRGB the moment the photo was read; now the photo is converted to *extended* sRGB without clipping, so such colors keep their real value as components below 0 or above 1 and stay distinct in the analysis (two different saturated greens no longer collapse into one sRGB green). Everything in the app works on these values: clustering, shares, harmony, series, region masks.
+
+What you see of it:
+
+- **Swatches and markers** are drawn in Display P3, so on a P3 screen a saturated color shows its real saturation.
+- **Outside sRGB**: a color outside the sRGB gamut gets an orange line *Outside sRGB · Display P3 0 255 0* in the list (and in the report and the series palette). Its hex and RGB are clipped to sRGB, the Display P3 values are what the photo actually has. The JSON export carries `displayP3: [r, g, b]` for such colors and the CSV exports add `p3_red/p3_green/p3_blue` columns when any color qualifies.
+- **On the wheel** such a color sits just beyond the rim (saturation above 100 %), and its hue is that of the unclipped color. Hue and saturation readouts of in-gamut colors are unchanged.
+
+Limits: the photo is read through macOS color management, so the result is only as good as the profile in the file (a photo without a profile is taken as sRGB; ProPhoto colors beyond Display P3 are shown at their true value in the analysis but clipped to P3 on screen). The PNG report is an ordinary sRGB image: wide-gamut swatches in it are gamut-mapped, which is why the Display P3 values are printed next to them. DxO's HSL tool works in its own wide-gamut space with its own hue axis (see *DxO hue axis* below), so hue and saturation numbers are approximations of what DxO shows.
+
+Related fix: a color's marker is now placed in the middle of the best patches of that color instead of at the first one found, so a flat backdrop gets its marker near the middle and not in the top-left corner.
+
+### Series palette as a reference in the main window
+
+As soon as the series window holds photos, its shared palette is available while you work on one photo (it follows the series window live; the series is not saved, so load it first):
+
+- **On the wheel** the palette colors show as numbered *diamonds* (dashed rim, bigger = larger share of the series) — where this photo's colors should land. Select a marker and a dashed line links it to the palette color it is closest to. Toggle with **Series palette** under the wheel or **Analysis ▸ Show Series Palette**; the choice is remembered.
+- **Series fit** (under the wheel): the photo's consistency score with the palette and the same alignment suggestion as in the series window (*To match: Hue +7° · Saturation −4% · Lightness −4*). With a graded version loaded the score of the graded photo follows (*61 → 34*) with what is still off, so you can see at once whether a grade moved the photo toward the series or away from it.
+- **Per color** in the list: *Series: ≈ palette 2 (#6677FD) · hue +1° · sat +4% · L\* −4* (the nearest palette color within the match distance and what it takes to get there), *already close*, or *No close color in the series palette* (orange: a color that is not part of the series' look, or the palette has no counterpart for it).
+- The **PNG report** shows the diamonds, the per-color lines and *Series fit 61 → after grading 34* in its header.
+
+Hue shifts are in sRGB degrees; saturation is the chroma change in percent, lightness the CIE L\* change. The series palette comes from the photos you loaded, so a photo that is part of the series pulls the palette toward itself.
+
+### Reference photo: copy the look of another photo
+
+Instead of a series, a single photo can be the reference: **Compare ▸ Open Reference Photo…** (⌥⌘R), or the *Reference photo* menu under the wheel. The photo is analyzed (as many colors as the *Colors* setting) and its palette replaces the series palette, with the same display: diamonds on the wheel, a *Reference fit* score with *To match: Hue … · Saturation … · Lightness …*, a *Reference* line per color in the list (and in the PNG report), and **Reference** next to *Harmony* and *Tints* under *DxO Color Grading*: the suggested preset then aims at the reference palette instead of at the harmony. **Compare ▸ Remove Reference Photo** (or the same menu under the wheel) goes back to the series palette, if there is one.
+
+- A reference photo is another scene, not another take of the same one, so a color is matched with the *nearest* reference color unless that is very far away (OKLab distance 0.30; for a series the limit is 0.12). With a reference that has little in common with the photo the hue shifts are large (−112° and the like) and the fit score is low: read that as "these looks are far apart", and choose a reference with related colors (warm sunset → another warm sunset).
+- The reference stays when another photo is opened, so one reference can serve a whole batch. It is saved in the session (⌘S) as a path: opening the photo again loads the same reference, from the saved path or else from the photo's folder (a missing file is mentioned in the message and the current reference stays). It uses the *Colors* setting of the moment it was opened, without subject weighting.
+- Command line: `ColorAnalyze photo.jpg --reference look.jpg [--grading-target reference] --export-report report.png --export-dxo-preset grading.preset` (`reference` is the same target as `series`).
+
+## Skin tone line
+
+A reference for skin on the wheel, like the skin tone line of a vectorscope: a line at sRGB hue 25° inside a faint wedge for hues 13°–37° (orange-red to orange-yellow, where skin of every complexion sits; complexions differ mostly in saturation and brightness). It follows the active wheel (RGB or RYB) and can be switched off with **Skin tone line** under the wheel or **Analysis ▸ Show Skin Tone Line**; the choice is remembered between launches.
+
+Colors in the list that are skin-like (hue within ±12° of the line, HSB saturation 12–78 %, brightness ≥ 28 %) get a **Skin tone** row: *In range · +9° toward yellow* (+ is toward yellow, − toward red). With a graded version loaded you also see what the grade did: *still in range*, *left the range* (red: the skin was pushed too yellow, red or magenta) or *now in range* (orange: something else, e.g. a red wall, moved into the skin band). The PNG report shows the same; the CSV/JSON exports carry `skinToneOffset` (and `after.skinToneOffset`) for skin-like colors — the `skin_tone_offset` / `after_skin_tone_offset` CSV columns appear when any color qualifies. It is a hue/saturation rule of thumb, not a skin detector: sand-colored walls, wood or cardboard qualify too, so use it together with the subject map and your own eye.
+
+## DxO hue axis and the HSL channels
+
+PhotoLab's *hue* — the position on the rings of its HSL tool and the Hue of the Color Grading wheels — is **not the sRGB hue**. Measured with PhotoLab 10.1 on a chart of known colors (see [Calibrating the preview](#calibrating-the-preview)): it is the HSV hue of a color in **Rec.2020 primaries**, after the sRGB tone curve (`DxOHue.hue(of:)`). Consequences:
+
+- Pure sRGB red sits at 13.8° on PhotoLab's axis, orange (sRGB 30°) at 32°, **yellow (sRGB 60°) at 61° — already inside the fade to Green** — green at 93°, cyan at 184°, blue at 249°. How far a color is from its sRGB hue depends on its saturation (a faint red is at 5°, a saturated one at 9°, a pure one at 14°).
+- Every `.dop` sidecar of PhotoLab 10.1 stores the eight slices of the HSL tool (`HSLHueSlices`, Wide Gamut pipeline) with their fade ranges — Red around 0°, Orange 36°, Yellow 52° (a narrow band), Green 104°, Cyan 186°, Blue 231°, Purple 270°, Magenta 310° — and those apply to this hue.
+- **The "DxO HSL" channel of a color** is the slice it falls in on this axis, with the fades: sRGB yellow-green grass (81°) and pure sRGB yellow are both *Green* in PhotoLab, a warmer yellow (sRGB 50°) is *Yellow*, and azure (sRGB 200°) is *Blue*.
+- **DxO hue values for the Color Grading preset** are the PhotoLab hue of the target tint (`DxOHue.fromSRGB`: of the pure sRGB color with that hue).
+- **HSL Hue numbers** (the box below the wheel) are exact for the color at hand: the distance on this axis between the color and the same color turned by its harmony shift (`DxOHue.ringShift(of:bySRGBShift:)`).
+
+Everything else in the app (wheel, harmony, shifts in the list, exports) stays in sRGB degrees. The slices were read from one sidecar; if a later PhotoLab version changes them, `DxOHue.slices` is the place to update. (Before this was measured the app assumed a piecewise map anchored on the slice centers; it put sRGB red at 0° and yellow at 52°, up to 14° off.)
+
+## DxO Color Grading preset
+
+**File ▸ Export DxO Color Grading Preset…**, the *Export ▸ DxO Color Grading Preset…* menu of the toolbar, or **Export Preset…** in the *DxO Color Grading* box under the wheel writes a `.preset` file for PhotoLab's Color Grading tool. The save dialog starts in PhotoLab's own folder (`~/Library/DxO PhotoLab v10/ColorGradingPresets`, newest version that has one), where the preset then shows up in the Color Grading preset list; it is named *photo – ColorAnalyze*.
+
+The file format is the one PhotoLab itself writes (a Lua-style table; only the Color Grading keys, with Hue / Sat / Lum for Shadows, Midtones, Highlights and Master, plus Balance). The writer reproduces a preset saved by PhotoLab byte for byte (the test compares against one: 475 bytes, LF line ends, tabs). Checked in PhotoLab 10: presets exported by ColorAnalyze appear in the *Preset* menu of the Color Grading palette, next to PhotoLab's own. Choosing one and judging the result was not tried; please check that it looks right.
+
+What is suggested is a starting point, found with the **calibrated model** of PhotoLab's Color Grading (see [Calibrating the preview](#calibrating-the-preview)) — with *Strength* subtle / moderate / strong as the highest Saturation of a wheel (15 / 30 / 50):
+
+- **Harmony** (or **Series / Reference** when a palette is shown): Hue and Saturation of the three wheels are *optimized* so that the dominant colors, as the model predicts PhotoLab renders them, end up as close as possible to their target hues (the harmony's targets, or the matching palette colors). The cost is the share-weighted hue distance, plus penalties for a color that loses chroma or changes lightness, for a grey that picks up a cast (a grey with chroma 0.03 costs as much as 30° of hue error) and a small one for the saturation itself; the old rule of thumb (tint toward the target hue) is the starting point of a pattern search, so the result is never worse than it by this measure. Ranges without colors stay at 0, and when no tint within the strength improves the fit enough (1 %), nothing is suggested. It takes about a millisecond.
+- **Style** (menu in the *DxO Color Grading* box, remembered): a creative direction on top of the harmony. A style adds a second goal to the search: greys at the middle of a tonal range (OKLab L 0.25 for the shadows, 0.55 midtones, 0.82 highlights) should take on a cast, or be lifted, judged with the calibrated model like everything else. The basic cast has chroma 0.012 at *Moderate* (0.006 at *Subtle*, 0.02 at *Strong*), cool = blue (sRGB hue 225°), warm = orange (35°):
+  - *Warm highlights, cool shadows* and *Cool highlights, warm shadows*: the highlights and the shadows get opposite casts;
+  - *Teal & orange (cinematic)*: the same, with teal (190°) shadows and orange (40°) highlights at 1.6 times the cast;
+  - *Warm overall* / *Cool overall*: shadows, midtones and highlights all get the cast, laid over the whole photo by the **Master** wheel (first found on its own, then the three ranges adjust the colors on top). The cast counts four times as much as in the other styles against the hue fit, so these two give up the most of it: on a photo with strong blues, *Warm overall* moves them away from their targets. The box then says so (*… with this style: the cast costs hue accuracy*). Master is the least exact wheel of the model (error 0.2–1.8 at the measured hues against an effect of 6–11, about 20 % between them; see `calibration/README.md`), so check the cast in the preview;
+  - *Faded (lighter shadows)*: the darks are raised, with no cast of its own, by the **Blacks** and **Shadows** sliders of PhotoLab's *Light* palette (Selective Tone). The Color Grading wheels cannot do this: every curve of that model is zero at black. The box then shows a block *Light palette, Selective Tone: Blacks +31* with the note that these are set by hand (a Color Grading preset cannot carry them); the preview and the predicted colors include them. The search aims at a lift of OKLab L +0.07 at 0.06, +0.06 at 0.12 and +0.04 at 0.25 (at *Moderate* and up) while the greys of the midtones and highlights stay where they are, with Blacks and Shadows up to twice the strength's Saturation;
+  A style trades off against the hue fit of the colors, so the predicted fit may be worse than with *Neutral* (*Warm overall* can give up most of it); it also tints or lifts a range that has no colors of its own, which *Neutral* never does. It applies to *Harmony* and *Series / Reference*, not to *Tints*. Command line: `--grading-style neutral|warm-highlights|cool-highlights|teal-orange|warm-overall|cool-overall|faded`.
+- **Luminance and Balance** are part of the search too (Luminance of each wheel up to the strength, Balance up to ±50), but only count when they bring the colors at least 1° closer and lower the cost by 5 %; otherwise they stay at 0, because in the model they mostly trade a little hue for lightness, and a Lum of −3 is noise. In practice they are rarely used. They show in the box as *· Lum −7* and *Balance −23*, and in the preview and the preset like the rest.
+- The tints are often *not* the hue of the target: PhotoLab adds a tint per channel in a wide-gamut space, so to turn a yellow-green foliage toward green the best Hue is a cyan one. That is why the box and the preview matter more than the numbers alone.
+- **Predicted fit**: under the three wheels the box says how far the colors are from their targets now and after this grading (*Predicted: the colors are 15° from their target hues now, 3° after this grading*), or that no grading within the strength brings them closer.
+- **Tints**: for photos without real colors (fog, dusk, black and white), where there is nothing to aim at, the faint tint each range already has is strengthened. The app chooses this by itself when there is no harmony, and says so. Hue of nearly black pixels is unreliable. (This part is still the rule of thumb.)
+
+With **Preview on the photo** switched on, the predicted colors are shown where a graded version's would be: dashed ghost badges and trails on the wheel and the lightness strip, a *Predicted #hex · Δ hue · sat · L\** line per color in the list with the harmony shift and the skin tone band before → after (a skin color pushed out of the band shows in red), and *Predicted after grading* next to the harmony fit. The exaggeration ×2 / ×4 applies to the picture only, not to these numbers. The PNG report still shows only a real graded version.
+
+Master is suggested only by the *Warm overall* and *Cool overall* styles. A creative choice such as warm highlights against cool shadows cannot be derived from a photo; use the suggestion as a base, or the *Intention* field as a reminder of what you want. Command line: `--export-dxo-preset grading.preset [--grading-strength subtle|moderate|strong] [--grading-target harmony|series|emphasize]` (the strength option does not change your remembered setting).
+
+**HSL in PhotoLab: Hue per channel.** Below the tonal ranges the *DxO Color Grading* box lists, per HSL channel, how far PhotoLab's Hue handle should turn so the channel's colors reach their targets (*Red Hue +29° · colors 6*). It aims like the grading above it — at the harmony, or at the reference/series palette; with *Tints* there is nothing to turn toward and the box says so. Each color's sRGB shift (the *Harmony* line in the list) is converted to degrees on PhotoLab's own ring (`DxOHue.ringShift(of:bySRGBShift:)`: where the color is on PhotoLab's axis, and where the turned color is), colors in the same channel are averaged by their share of the photo, channels that need less than 2° are left out, neutral colors never appear (they belong to White Balance and Color Grading), and a channel whose colors want shifts more than 20° apart carries a warning. Each row names the color the handle goes toward (*Red Hue +29° → orange*): a + turn moves a channel's colors to the next channel (red → orange → yellow → green → cyan → blue → purple → magenta → red), a − turn to the previous one; on PhotoLab's ring a + turn is counter-clockwise, as measured in its HSL palette. Only hue is suggested; Saturation and Luminance are yours. The conversion uses PhotoLab's own hue measure (see above), so the numbers are those of the ring, as far as a handle can be set by eye.
+
+**Preview on the photo.** The checkbox *Preview on the photo* in the same box (or **Compare ▸ Toggle Preview of the Suggestion**, `P`) shows the photo with the suggested values applied: the Color Grading tints of the three tonal ranges and the HSL hue turns of the list above. The preview sits right of a divider you can drag (*Original | Preview*), or — with the two-icon switch in the lower left corner of the photo (it appears while the preview is on), or **Compare ▸ Show Preview Below the Original** — in a second photo below the original (the pane is halved; both show the same part of the photo at the same zoom, moving or zooming one moves both; the markers stay on the original). The choice is remembered. It follows the suggestion live — when you move a marker, change the strength or the aim, or choose another harmony — rendered in the background once the settings rest. *×1 / ×2 / ×4* exaggerates the tints (not the hue turns), because a suggestion of Saturation 8 is hard to see. The preview is **calibrated against PhotoLab 10.1** (next section) and reproduces its tints and hue turns on a test chart to within about 0.5 on a scale where the effect itself is 2–5 (OKLab distance × 100); PhotoLab's rendering of a real photo can still differ — other corrections, local adjustments, the exact order of the tools — so use it to judge direction and character, such as a hue turn that changes a subject color like a red boat, and check the result in PhotoLab. With a graded version loaded the divider belongs to the comparison, and the preview is switched off.
+
+### Calibrating the preview
+
+The first version of the preview was a guess (a tint added in OKLab) and was, on average, further from PhotoLab than the unedited photo. It was replaced by what PhotoLab itself does, measured with the files in [`calibration/`](calibration/): a chart of 17 greys and 51 saturated patches ([`chart.jpg`](calibration/chart.jpg), generated by `makechart.swift`), opened in PhotoLab, graded in nine ways (`E1` … `E9`) and then in sixteen more for Luminance, Master, Balance and the HSL Saturation and Luminance (`F`, `R`, `B`, `H`; 16-bit TIFF exports in `calibration/exports/`, patch values in the `.csv` files, the `.dop` of the HSL experiment), and compared with the preview by `calibration/tool` (`calibration/score.sh` reruns all comparisons). What the measurements say:
+
+- **Color Grading works per channel in linear light with Rec.2020 primaries.** Each tonal range adds, to each channel, `Saturation/100 × K(x) × n(hue)`, where `x` is that channel's own value (so a saturated red is tinted differently from a grey of the same lightness), `K` is a bump per range (0 at black and white; peaks at 0.049 / 0.134 / 0.153 for shadows / midtones / highlights, at channel values 0.08 / 0.28 / 0.63) and `n` is a direction in R, G, B that turns once around with the Hue number (the Hue *is* the HSV hue of that direction). Saturation scales it linearly (checked at 25, 50 and 75). Other RGB spaces fit worse: on saturated patches sRGB leaves an error of 14–64 % of the effect, P3 7–35 %, Rec.2020 2–7 %.
+- **The HSL tool turns the Rec.2020 HSV hue** by `Σ membership × shift` over the eight slices, keeping saturation and brightness — and, unlike a plain HSV rotation, the OKLab lightness (red → orange stays equally light).
+- **Luminance of a wheel** adds the same value to every channel: `Luminance/100 × L(x)`, with `L` its own bump per range (about 4 % above the Saturation bumps; negative values act about 7 % weaker). It is linear in the value (+60 and −60 mirror each other to within that 7 %).
+- **Master** is a wheel of its own: not the sum of the three ranges (3–14 % above it) and not one curve either, since its red, green and blue channel each have their own curve that changes with the hue. It is therefore measured per hue and channel on the grey ramp (twelve hues: 0, 36, 58, 80, 104, 130, 160, 200, 231, 270, 312, 340) and interpolated around the circle, with Saturation scaling it; with the same tint on all three ranges PhotoLab returns exactly what Master does, at any Balance.
+- **Balance does not change how much** is added, only how the three ranges divide it: the three bumps always add up to the same total, and Balance slides their division along the channel value (in `x^0.4167`, ±0.10 at ±59.4). Positive lets the highlights reach into the darks and pushes the shadows back.
+- **Selective Tone** (Light palette; measured: Blacks and Shadows at +100, −100 and +50, and one combination): a curve of the mean of the three channels, a colored pixel keeps its hue and chroma and is scaled by the gain of that mean (error 1.5 against an effect of 6.7 for Blacks +100). The sliders add up (a combination of Blacks +60 and Shadows +40 within 10 %) and are about linear (+50 gives 0.4–0.55 of +100; Shadows +50 is off by up to 9 at the deepest grey). Blacks +100 lifts a grey of 0.005 to 0.047, but pure black (0) stays black. Whites, Highlights and Midtones were not measured, and neither were the Tone Curve and Contrast.
+- **HSL Saturation** scales the OKLab chroma by `1 + value × membership` (the export clips to sRGB, so a strong positive value saturates less than the formula says). **HSL Luminance** moves OKLab lightness toward white (or black) by a share of the headroom that grows with the chroma, so a pale color hardly moves; this one is only a rough fit (see below).
+- **Accuracy** (mean error over the chart, OKLab distance × 100, next to the mean size of the effect): shadows 0.1 (1.9), midtones 0.1 (2.5), highlights 0.03 (1.4), three ranges at six unseen hues 0.3–0.7 (3–5), a hold-out with hues and saturations that were not used in the fit 0.4 (2.4), HSL turns 0.9 (4.3, worst patch 6.6). Luminance of the wheels 0.01–0.09 (2–8), Balance ±59 0.1–0.2 (1–3), Master tint 0.2–1.8 at the twelve measured hues (effect 6–11, saturated patches the least exact), 1.0 (6.1) and 2.2 (10.9) at two hues that were measured only afterwards and not in the table at the time (58° and 130°), HSL Saturation 1.5 (7.1), **HSL Luminance 3.7 (10.9, worst patch 13)**: one alternating experiment each, with no hold-out, so these two are less certain. The directions `n` were measured at ten hues and are interpolated between them. Selective Tone (Blacks, Shadows): 0.7–1.9 against 4–9 for lifts, 2.4–3.5 against 16–20 for a crush (−100: pixels clip). Not measured: Uniformity of the HSL channels, Vibrancy, Luminance with a negative Balance, and the rest of the Light palette.
+- To redo it for another PhotoLab version: open `chart.jpg`, make the same gradings, export the 16-bit TIFFs, `analyze dump` them, run `fit14.py` and `emit_tables.py` (Hue and Saturation of the ranges) and `emit_extra.py` (the rest), and rerun `score.sh`.
+
+To enter the suggestions by hand instead of loading the preset, see [section 5b of the tutorial](docs/TUTORIAL.md) (Color Grading palette, and the HSL palette for single colors).
+
+HSL adjustments are not written, for two reasons. (1) PhotoLab has no HSL preset: its presets exist for Color Grading, tone curves, film scans and watermarks, and the general presets (`~/Library/DxO PhotoLab v10/Presets`) are complete snapshots of all settings, so an HSL-only file would be a guess about what PhotoLab accepts. (2) What is known about HSL values, from a sidecar with active HSL (`Overrides` of the `.dop`: `HSLActive = true` and `HSLHueSlices` with *Hue*, *Saturation*, *Luminance* and *Uniformity* per channel, untouched channels at 0) checked against PhotoLab 10's HSL palette on the same photo: *Saturation*, *Luminance* and *Uniformity* are the values of the palette's number fields (shown rounded: −25.56 is −26), −100 to +100 (Uniformity 0 to 100). *Hue* is not a number field: it is the position of the channel's range on the outer ring of the wheel, stored as an offset in degrees from the channel's own center (Red +18.66, Green +11.05 in the sample), and a positive offset turns the range **counter-clockwise** — toward higher DxO hue: red → orange → yellow → green → cyan → blue → purple → magenta. The list in ColorAnalyze keeps to channel, direction and size in sRGB degrees; converting them to the ring's DxO degrees is possible (the piecewise map of `DxOHue`) but not built.
+
+## Remembered settings
+
+These choices are remembered between launches and are active when the app starts: the **number of colors**, the **color wheel** (RGB, RYB, DxO, OKLCH), **subject weighting**, the **skin tone line**, the **Color Grading strength** (Subtle / Moderate / Strong) and the **preview** (on or off, and ×1 / ×2 / ×4). Two things take precedence for one run and do not change what is remembered: the saved session of a photo (the number of colors, weighting and wheel it was saved with, saved with ⌘S) and options given on the command line (`--wheel`, `--weighting`, `--grading-strength`). Remembered values are in the app's preferences (`defaults read local.coloranalyze`); `defaults delete local.coloranalyze` returns everything to the defaults.
+
+## Intention
+
+Color grading starts with the feeling you want, not with the harmony. The **Intention** field (under the lightness strip, above the wheel switch) is for one or two lines about what the photo should feel like — *late summer, warm and calm* — written before you choose or accept a harmony, so the harmony serves it and not the other way round. **Moods** adds or removes common words (warm, cool, calm, energetic, dramatic, nostalgic, fresh, moody, soft) as comma-separated items; the text is free otherwise.
+
+**Style from the intention.** When the note holds temperature words — English or Dutch, matched on the beginning of the word, so *warm* also finds *warme* and *koel* finds *koele* — the *DxO Color Grading* box offers the matching style: *Rustige, warme avond* → *Warm highlights, cool shadows?* with a **Use** button (warm: warm, glow/gloed, gold/goud, sunset/zonsondergang, sunny/zonnig, cozy/gezellig, summer/zomer, autumn/herfst, evening/avond; cool: cool/koel, cold/koud, icy/ijzig, winter, fresh/fris, blue/blauw, mist, melancholy). Nothing changes until you click it; *cinematic/filmisch* suggests *Teal & orange* and *faded/vintage/retro/nostalgic* suggests *Faded* when the note has no temperature word; a note with both kinds of words, or none, suggests nothing, and the hint disappears when the style is already chosen or the grading only strengthens tints.
+
+The note belongs to the photo: it is saved in the session (⌘S) and comes back when the photo is opened again, appears in the PNG report under the title (*Intention: “warm, calm, nostalgic”*) and as `intention` in the JSON export. Opening another photo starts with an empty field. The series window has its own field (*Intention for the series*), saved in the series file, the series JSON and the overview image. Command line: `--intention "warm, calm"` (applies to the photo and the series; combine it with the export options).
+
+## Color wheels (RGB, RYB, DxO, OKLCH)
+
+The wheel switch (**RGB | RYB | DxO | OKLCH**, under the lightness strip, or **Analysis ▸ Color Wheel**) changes the wheel the harmony is computed and drawn on. Colors never change, only where a hue sits on the wheel.
+
+- **RGB** is the ordinary sRGB hue circle.
+- **RYB** is the traditional artist's red–yellow–blue wheel (Adobe Color's "artistic" wheel; most color-theory teaching, including the classic complements red–green, orange–blue and yellow–violet, is based on it): a piecewise-linear map through the 12-step artist's wheel (sRGB hue → RYB position: red 0→0°, orange 30→60°, yellow 60→120°, green 120→180°, cyan 180→210°, blue 240→240°, violet 270→300°, magenta 300→330°).
+- **DxO** is PhotoLab's own hue axis (the HSV hue in Rec.2020 that its Color Grading and HSL wheels use, see *DxO hue axis* above). An angle on this wheel is the **Hue number PhotoLab shows**, and the wheel is oriented like PhotoLab's: 0° at the right, counter-clockwise. A harmony found here is one in PhotoLab's terms (the complement is +180° on PhotoLab's wheel, which in sRGB degrees is not 180°). The map is one point per degree through `DxOHue.fromSRGB`, i.e. a color is placed where the *pure* color of its sRGB hue sits; a pale color is up to about 9° from where PhotoLab measures it. The colors on the disc are the pure colors at each DxO hue.
+
+- **OKLCH** is the hue angle of OKLCH, the polar form of OKLab: a perceptual wheel, where equal steps look like equal steps of color. On the sRGB circle green and yellow are stretched (green covers 60°–180°, blue only 30°), here they are not, so a harmony angle such as *Triadic* or *Split-complementary* means what it says to the eye. Positions come from one point per degree through the OKLab hue of the pure color with that sRGB hue (red 29°, yellow 110°, green 142°, cyan 195°, blue 264°, magenta 328°); a color is placed where the pure color of its sRGB hue sits, so a very pale or dark color is not corrected for its own chroma and lightness. The disc shows the pure colors at each angle.
+
+In RYB, DxO and OKLCH mode the wheel image, marker positions, harmony detection, target spokes, the rotation handle and the fit are all on that wheel. Everything that is *given to DxO* in the list stays in sRGB hue degrees: hue shifts and target hues in the list, "Target hues (RGB)" and the CSV/JSON columns are converted back to sRGB degrees. (The Hue numbers of the Color Grading suggestion and the HSL box are always PhotoLab's, whatever wheel is shown.) Command line: `--wheel rgb|ryb|dxo|oklch`; the choice is saved in the session, the series file, the report and the JSON export.
+
+## Subject weighting (saliency)
+
+Large calm areas (sky, wall, field) dominate a plain pixel count, while the colors of the subject are small. **Subject** in the toolbar (or **Analysis ▸ Subject Weighting**) lets what a viewer looks at count more: Apple Vision's attention-based saliency gives every pixel a weight from 1 (background) up to 1 + 4 (**Moderate**) or 1 + 12 (**Strong**) on the most salient spot. The weights are used for:
+
+- the clusters themselves (weighted k-means), so subject colors are found even when they cover little area;
+- the percentages in the list, the harmony fit and the exports (`coverage_pct` is then the weighted share; `area_pct` keeps the plain pixel share);
+- where the markers land (the patch of a color that lies on the subject wins).
+
+**Show Subject Map** (`M`) darkens everything outside the detected subject, so you can see what the weighting is based on. Changing the weighting re-analyzes the photo and resets the markers, like changing the number of colors; weighting is part of the saved session, the PNG report subtitle and the JSON export (`weighting`). Command line: `--weighting off|moderate|strong` (overrides a saved session).
+
+Saliency measures visual attention (contrast, color, position), not "the person" or "the product": a bright background object can pull weight away from the real subject. Check the subject map, and add a marker by hand where the weighting misses.
+
+## Suggest a marker for a missing color
+
+The analysis follows surface area, so a small subject or accent — a red boat on blue water, a yellow jacket — often gets no marker. **Suggest Marker** (the wand in the *Markers* group of the toolbar, **Analysis ▸ Suggest Marker for a Missing Color**, ⌥⌘M) adds one on the color that no marker represents yet. Every pixel further than 0.08 (OKLab) from all marker colors counts with its squared distance, so a large patch of a slightly different color and a small patch of a very different one can both win; the pixels are clustered and the marker goes on the middle of the best patch of the heaviest cluster (with subject weighting on, patches on the subject win). Press it again for the next color; when nothing noteworthy is left it says so. It can be undone like any marker change. Existing markers are never moved.
+
+On the sample photo of the [tutorial](docs/TUTORIAL.md) the first suggestions after the six automatic markers are the dark shore, the orange glow at the horizon, the yellow jacket and the red hull of the boat. Command line: `--add-missing N` adds N such markers before exporting.
+
+## Undo and redo
+
+**Edit ▸ Undo / Redo** (⌘Z / ⇧⌘Z) takes back and redoes changes to the markers: adding (also with Suggest Marker), removing, dragging (a whole drag is one step, whatever the distance), arrow-key nudging (a burst of keys is one step) and **Re-analyze** — including the re-analysis that follows a change of the number of colors or of the subject weighting — so hand-placed markers are not lost by accident. The selection comes back with them, and a message under the photo says what was undone (*Undid Move Marker 3*). Up to 200 steps, kept per window; opening another photo starts with an empty history. Not covered: harmony and wheel choices, zoom, the comparison with a graded version, the intention text and the series window.
+
+## Zooming in to place markers
+
+Zoom into the photo to put a marker on exactly the right pixel (1× = whole photo, up to 32×):
+
+- **Zoom**: pinch on the trackpad, ⌘- or ⌥-scroll (zooms around the pointer, so what is under the cursor stays there), the **+ / −** buttons and the zoom menu in the toolbar (Fit Photo, Actual Pixels, 2× 4× 8× 16×), or **View ▸ Zoom In / Zoom Out** (⌘+ / ⌘−).
+- **Move**: scroll, or drag the photo itself. The photo cannot be moved out of the pane.
+- **Back**: **View ▸ Fit Photo** (⌘0), the *Fit* button in the zoom indicator at the bottom right, or **Actual Pixels** (⌘1: one image pixel per screen point).
+- **Markers**: they keep their position on the photo and become slightly smaller while zoomed in. Dragging one moves it in the zoomed photo, so a small step on screen is a small step on the photo; regions, the color list and the wheel update live as before.
+- **Arrow keys**: with a marker selected, the arrow keys move it by one pixel of the photo as shown (⇧ = 10 pixels; hold the key to keep moving) — the last step when dragging is too coarse. Keys pressed one after the other on the same marker are one undo step. The keys keep their usual job while you type in a text field or work in another control; clicking or dragging a marker (on the photo or on the wheel) ends text editing, so the arrows work right away. The photo moves along when a nudged marker would leave the pane; choosing a marker in the list or on the wheel, or adding one (Suggest Marker), brings it into view as well while zoomed in.
+- **Sample aid**: while zoomed in, the selected marker shows a dashed ring with ticks — the area its color is averaged over — and a dot at the exact spot. Place the dot, not the badge.
+- Beyond roughly 1.5 screen points per image pixel the photo is drawn with hard pixels instead of smoothed, so you see what is actually sampled.
+
+Zoom and position are not part of a saved session: a photo always opens at 1×. Before/after (including the split divider), regions and the subject map follow the zoom. Double-click still adds a marker, now at the zoomed position.
+
+## Region overlay
+
+Hover a color in the list, or select (click) a marker on the photo or the wheel, or drag a marker: everything outside that color's region is dimmed and the photo shows "Region of color N · x% of the photo". The region is exactly the set of pixels nearest to that marker color — the same pixels the coverage percentage counts. Toggle with the **Regions** toolbar button (or `G`). Use it to see where a DxO local adjustment or control point should go.
+
+## Before / after comparison
+
+Export the graded version from DxO (same framing, e.g. JPEG/TIFF) and load it with **Compare** (⇧⌘O). The graded photo is sampled at the same marker positions, so you see what your grading actually did:
+
+- **Photo**: Before / Split / After (segmented control in the toolbar, `\` toggles before/after). Drag the divider in Split mode. A warning appears when the aspect ratio differs, because marker positions then no longer line up.
+- **Wheel**: dashed ghost badges and arrows show where each color moved; the lightness strip gets a ghost per color too. Under the harmony picker, "After grading" shows the harmony fit before → after.
+- **List**: per color the after hex, Δhue / Δsat / ΔL*, and whether the hue shift to the harmony target got smaller (green) or larger (red).
+
+Markers can still be dragged while comparing; the after colors follow.
+
+`ColorAnalyze photo.jpg --graded graded.jpg` opens both directly.
+
+## Saving a session
+
+**File ▸ Save Session** (⌘S) writes `photo.ext.coloranalyze.json` next to the photo: marker positions, number of colors, harmony choice and rotation, and the graded version with the comparison view. Opening the photo again restores all of that automatically (colors are re-sampled from the photo). The title shows "— Edited" while there are changes that are not saved. **Re-analyze** replaces the markers; the file on disk only changes when you save again. The sidecar is plain JSON, so it can be kept, copied or edited with the photo.
+
+## PNG report
+
+**File ▸ Export Report as PNG…** (⇧⌘E) renders the window as one image (3616 px wide): photo with markers (before and after when a graded version is loaded), color wheel with harmony targets and shift arrows, lightness strip, and the full color list with hex / RGB / HSL, coverage, DxO channel, tonal range, harmony shift and the before → after deltas.
+
+For batch use: `ColorAnalyze photo.jpg [--graded graded.jpg] --export-report report.png` writes the report and quits. A saved session next to the photo is used if present.
+
+## Color list export (CSV / JSON)
+
+**File ▸ Export Color List as CSV…** (⌥⌘E), **… as CSV for Excel (;)…** (⌃⌘E) or **… as JSON…** (⌥⇧⌘E), or the **Export** menu in the toolbar. One record per color with: hex, RGB, HSL (hue in degrees, saturation and lightness in %), CIE L*, coverage %, marker position (x, y; 0–1, top-left origin), DxO HSL channel, tonal range, nearest harmony target hue and the hue shift needed to reach it. With a graded version loaded each color also gets the after hex/RGB, Δ hue / saturation / lightness / L*, and the remaining harmony shift.
+
+- **CSV**: header row, comma separator, `.` as decimal separator, CRLF line ends; the `after_*` columns only appear when a graded version is loaded.
+- **CSV for Excel (;)**: the same table with `;` as separator and `,` as decimal separator, which is what Excel expects with a Dutch locale — double-click it and the columns and numbers come out right. On a machine with an English locale use the plain CSV instead. The file is ASCII, so no byte-order mark is needed.
+- **JSON**: the same records under `colors`, plus `photo`, `graded`, `exportedAt` and a `harmony` object (kind, auto-detected, rotation, target hues, fit before and after).
+
+Batch use: `ColorAnalyze photo.jpg --export-colors list.csv --export-colors list.json --export-colors-excel list-nl.csv` (for `--export-colors` the extension picks CSV or JSON; the options can be repeated and combined with `--export-report` and `--graded`).
+
+## Palette export (swatches and image)
+
+The colors can also leave the app as a palette: **File ▸ Export Color Palette as Swatches (.ase)…** or the *Export* menu of the toolbar.
+
+- **Swatches (.ase)**: an Adobe Swatch Exchange file with one group (*photo – ColorAnalyze*) and a swatch per color, named *1 – #253C54*. Photoshop, Illustrator, InDesign, Affinity and other tools read it into their swatch panels. The colors are sRGB; a color outside the sRGB gamut (wide-gamut photo) is clamped. Checked against an independent parser, not yet in each of those programs.
+- **PNG**: **Export Color Palette as PNG…** writes one image (3200 px wide) with a bar in which each color is as wide as its share of the photo, and below it a card per color with number, hex and share — for a moodboard or to hand over.
+
+Command line: `ColorAnalyze photo.jpg --export-colors palette.ase --export-colors palette.png` (the extension picks the format: `.ase`, `.png`, `.json`, otherwise CSV).
+
+The series window has the same for its shared palette: **Shared Palette as Swatches (.ase)…** in its *Export* menu, or `--export-series palette.ase`; the group is named *series name – ColorAnalyze*.
+
+## Toolbars
+
+Both windows group their buttons by purpose, with a gap between the groups (the system's toolbar spacer on macOS 26 and later):
+
+- **Main window**: *File* (Open, Save Session, Export) · *Analysis* (number of colors, Re-analyze, Subject weighting and map) · *View* (Zoom Out / zoom menu / Zoom In, Regions, Compare with the Before/Split/After switch and Close) · *Markers* (Add, Remove) · *Series*.
+- **Series window**: *Photos* (Add, Remove) · *Analysis* (colors per photo, palette size, Subject weighting) · *View* (Sort by Score) · *Export*.
+
+Every button has a tooltip with its keyboard shortcut where there is one.
+
+## Build & run (no Xcode needed)
+
+```bash
+./scripts/build-app.sh          # → build/ColorAnalyze.app
+open build/ColorAnalyze.app
+./scripts/test.sh               # unit tests (Swift Testing)
+```
+
+`ColorAnalyze.app/Contents/MacOS/ColorAnalyze /path/to/photo.jpg` opens a photo directly. JPEG, PNG, TIFF, HEIC and camera RAW (via macOS's RAW decoder) are supported.
+
+## How the analysis works
+
+1. Photo is decoded with EXIF orientation and converted to sRGB; a 256 px copy is used for clustering, a 1024 px copy for sampling.
+2. k-means++ in OKLab with 2× the requested count, near-duplicates (ΔE_OK < 0.05) merged, largest *n* kept.
+3. Each marker goes to the center of the largest homogeneous patch of its cluster; its color is the average in a small disc there.
+4. Coverage = share of pixels nearest to each marker color (recomputed live while dragging).
+5. Harmony = template and rotation with the lowest weighted hue error; weights = coverage × chroma, neutrals ignored. Templates (offsets from the first target): monochromatic [0], analogous [−30, 0, 30], **analogous + accent** [−30, 0, 30, 180] (neighbours with the complement as an accent), complementary [0, 180], split-complementary [0, 150, 210], triadic [0, 120, 240], **tetradic / rectangle** [0, 60, 180, 240] (two complementary pairs, for photos with two color families and their counter-colors) and square [0, 90, 180, 270]. Each extra target costs 50 degrees² in the comparison, so a simpler template wins when the fit is similar.
+
+DxO channel centers (Red 0°, Orange 30°, Yellow 60°, Green 120°, Cyan 180°, Blue 240°, Purple 270°, Magenta 300°) and the L* 33/66 tonal split are approximations of DxO's own working space.
+
+## App icon
+
+`Resources/AppIcon.icns` is bundled by `build-app.sh`. It is drawn in code (`scripts/make-icon.swift`: dark tile, color wheel, harmony spokes, four markers); to change the design edit that file and run `./scripts/make-icon.sh`, which regenerates the `.icns` with `iconutil` (no Xcode needed).
+
+Note: SwiftUI's `@State` is a macro the Command Line Tools cannot expand, so view state lives in `AnalysisModel`.

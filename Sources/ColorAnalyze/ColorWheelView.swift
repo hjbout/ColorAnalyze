@@ -1,0 +1,777 @@
+import ColorCore
+import SwiftUI
+
+/// Maps hue/saturation to positions on the wheel. Hue 0° (red) sits at 3 o'clock and
+/// hues run counter-clockwise, like the color grading wheels in Lightroom and DxO.
+enum WheelGeometry {
+    static let hueZeroAngle = 0.0
+    static let counterClockwise = true
+
+    static func point(hue: Double, saturation: Double, center: CGPoint, radius: CGFloat) -> CGPoint {
+        let a = (hueZeroAngle + (counterClockwise ? hue : -hue)) * .pi / 180
+        return CGPoint(x: center.x + cos(a) * saturation * radius,
+                       y: center.y - sin(a) * saturation * radius)
+    }
+
+    static func hue(at point: CGPoint, center: CGPoint) -> Double {
+        let a = atan2(-(point.y - center.y), point.x - center.x) * 180 / .pi
+        return ColorMath.normalizeDegrees(counterClockwise ? a - hueZeroAngle : hueZeroAngle - a)
+    }
+
+    /// Shared wheel bitmap for the window and the exported report.
+    @MainActor private static let rgbWheel = renderWheel(size: 720, space: .rgb)
+    @MainActor private static let rybWheel = renderWheel(size: 720, space: .ryb)
+    @MainActor private static let dxoWheel = renderWheel(size: 720, space: .dxo)
+    @MainActor private static let oklchWheel = renderWheel(size: 720, space: .oklch)
+
+    @MainActor static func wheelImage(for space: HueSpace) -> CGImage {
+        switch space {
+        case .rgb: rgbWheel
+        case .ryb: rybWheel
+        case .dxo: dxoWheel
+        case .oklch: oklchWheel
+        }
+    }
+
+    /// Position of a color's sRGB hue on the wheel of `space`.
+    static func point(rgbHue: Double, space: HueSpace, saturation: Double, center: CGPoint, radius: CGFloat) -> CGPoint {
+        // Colors outside the sRGB gamut have a saturation above 1: they sit just beyond the rim.
+        point(hue: space.position(ofRGBHue: rgbHue), saturation: min(saturation, 1.1), center: center, radius: radius)
+    }
+
+    /// HSB disc at full brightness: angle = position on the wheel of `space`, saturation = radius.
+    static func renderWheel(size: Int, space: HueSpace) -> CGImage {
+        var bytes = [UInt8](repeating: 0, count: size * size * 4)
+        let c = Double(size) / 2
+        let center = CGPoint(x: c, y: c)
+        for y in 0..<size {
+            for x in 0..<size {
+                let p = CGPoint(x: Double(x) + 0.5, y: Double(y) + 0.5)
+                let r = hypot(p.x - c, p.y - c)
+                let alpha = min(1, max(0, c - r + 0.5))
+                guard alpha > 0 else { continue }
+                let rgb = SRGBColor.fromHSB(h: space.rgbHue(atPosition: hue(at: p, center: center)), s: min(1, r / c), b: 1)
+                let i = (y * size + x) * 4
+                bytes[i] = UInt8(rgb.r * alpha * 255)
+                bytes[i + 1] = UInt8(rgb.g * alpha * 255)
+                bytes[i + 2] = UInt8(rgb.b * alpha * 255)
+                bytes[i + 3] = UInt8(alpha * 255)
+            }
+        }
+        return bytes.withUnsafeMutableBytes { raw in
+            CGContext(data: raw.baseAddress, width: size, height: size, bitsPerComponent: 8,
+                      bytesPerRow: size * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
+        }
+    }
+}
+
+struct ColorWheelView: View {
+    @Environment(AnalysisModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        let fit = model.harmony
+        VStack(spacing: 16) {
+            GeometryReader { geo in
+                // Leave room for the rotation handle, which sits 7% outside the rim at any angle.
+                let side = min(geo.size.width, geo.size.height) - 68
+                let radius = side / 2
+                let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+                ZStack {
+                    Image(decorative: WheelGeometry.wheelImage(for: model.hueSpace), scale: 1)
+                        .resizable()
+                        .frame(width: side, height: side)
+                        .shadow(color: .black.opacity(0.25), radius: 6)
+                        .position(center)
+                        .onTapGesture { model.selectedMarkerID = nil }
+
+                    if model.showSkinTone {
+                        SkinToneOverlay(space: model.hueSpace, center: center, radius: radius)
+                            .allowsHitTesting(false)
+                    }
+
+                    if model.isSeriesReferenceShown {
+                        SeriesReferenceOverlay(palette: model.seriesPalette, space: model.hueSpace,
+                                               center: center, radius: radius)
+                    }
+
+                    if let fit {
+                        HarmonyOverlay(fit: fit, markers: model.markers, center: center, radius: radius)
+                            .allowsHitTesting(false)
+                        rotationHandle(fit: fit, center: center, radius: radius)
+                    }
+
+                    if model.hasAfterColors {
+                        AfterTrails(markers: model.markers, afterColors: model.markers.map { model.afterColor(for: $0) },
+                                    space: model.hueSpace, center: center, radius: radius)
+                            .allowsHitTesting(false)
+                    }
+
+                    // The selected marker is linked to the series palette color it is closest to.
+                    if let id = model.selectedMarkerID, let marker = model.markers.first(where: { $0.id == id }),
+                       let match = model.seriesMatch(for: marker) {
+                        let from = marker.color.hsb, to = model.seriesPalette[match.index].color.hsb
+                        Path { path in
+                            path.move(to: WheelGeometry.point(rgbHue: from.h, space: model.hueSpace, saturation: from.s,
+                                                              center: center, radius: radius))
+                            path.addLine(to: WheelGeometry.point(rgbHue: to.h, space: model.hueSpace, saturation: to.s,
+                                                                 center: center, radius: radius))
+                        }
+                        .stroke(.white, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                        .shadow(color: .black.opacity(0.6), radius: 1)
+                        .allowsHitTesting(false)
+                    }
+
+                    ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
+                        let hsb = marker.color.hsb
+                        MarkerBadge(number: index + 1, color: marker.color,
+                                    diameter: 16 + 30 * sqrt(marker.share),
+                                    isSelected: marker.id == model.selectedMarkerID)
+                            .position(WheelGeometry.point(rgbHue: hsb.h, space: model.hueSpace, saturation: hsb.s,
+                                                          center: center, radius: radius))
+                            // No .onHover here: it makes the rotation handle's drag stop working. Tapping a
+                            // marker selects it, which shows its region; the list rows do support hover.
+                            .onTapGesture {
+                                model.selectedMarkerID = marker.id
+                                model.releaseKeyboardFocus()
+                            }
+                            .help(String(format: "%@ · hue %.0f° · sat %.0f%%", marker.color.hex, hsb.h, hsb.s * 100))
+                    }
+
+                    if model.hasAfterColors {
+                        ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
+                            if let after = model.afterColor(for: marker) {
+                                let hsb = after.hsb
+                                GhostBadge(number: index + 1, color: after,
+                                           diameter: 16 + 30 * sqrt(marker.share))
+                                    .position(WheelGeometry.point(rgbHue: hsb.h, space: model.hueSpace, saturation: hsb.s,
+                                                                  center: center, radius: radius))
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                    }
+                }
+                .coordinateSpace(.named("wheel"))
+                .contentShape(Rectangle())
+                .onTapGesture { model.selectedMarkerID = nil }
+            }
+            .aspectRatio(1, contentMode: .fit)
+
+            LightnessStrip(markers: model.markers, selectedID: model.selectedMarkerID,
+                           afterColors: model.markers.map { model.afterColor(for: $0) })
+                .padding(.horizontal, 20)
+
+            ScrollView {
+                harmonyControls(fit: fit)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+            }
+        }
+        .padding(.top, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func seriesFitView(_ fit: PhotoConsistency, after: PhotoConsistency?) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Label("\(model.referenceTitle) fit", systemImage: "diamond")
+                    .font(.subheadline)
+                ScoreBadge(score: fit.score)
+                if let after {
+                    Image(systemName: "arrow.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ScoreBadge(score: after.score)
+                        .help("Fit of the graded version")
+                }
+                Spacer()
+            }
+            Text(fit.hasSuggestion ? "To match: " + (seriesSuggestion(fit) ?? "already matches the \(model.referenceNoun)")
+                                   : "Too different from the \(model.referenceNoun) to suggest an alignment")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let after {
+                Text(after.hasSuggestion ? (model.afterImage == nil ? "Predicted after grading, still: " : "After grading, still: ") + (seriesSuggestion(after) ?? "matches the \(model.referenceNoun)")
+                                         : (model.afterImage == nil ? "Predicted after grading: still too different from the \(model.referenceNoun)"
+                                                                    : "After grading: still too different from the \(model.referenceNoun)"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .help("How well this photo's colors fit the palette of the \(model.referenceNoun), and a starting point for aligning it (hue in sRGB degrees).")
+    }
+
+    private func fitColor(_ deviation: Double) -> Color {
+        deviation < 10 ? .green : deviation < 25 ? .orange : .red
+    }
+
+    private func rotationHandle(fit: HarmonyFit, center: CGPoint, radius: CGFloat) -> some View {
+        let offset = fit.kind.offsets[0]
+        let position = WheelGeometry.point(hue: fit.rotation + offset, saturation: 1.07, center: center, radius: radius)
+        return Image(systemName: "diamond.fill")
+            .font(.system(size: 14))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.6), radius: 2)
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
+            .position(position)
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("wheel")).onChanged { value in
+                let hue = WheelGeometry.hue(at: value.location, center: center)
+                model.harmonyRotationOverride = (hue - offset).rounded()
+            })
+            .help("Drag to rotate the harmony")
+    }
+
+    @ViewBuilder
+    private func harmonyControls(fit: HarmonyFit?) -> some View {
+        @Bindable var model = model
+        VStack(alignment: .leading, spacing: 8) {
+            IntentionField(title: "Intention", placeholder: "What should this photo feel like?",
+                           text: $model.intention)
+            Picker("Wheel", selection: $model.hueSpace) {
+                ForEach(HueSpace.allCases) { Text($0.displayName).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .help("RGB is the ordinary sRGB hue circle. RYB is the artist's red–yellow–blue wheel, where the classic complements are red–green, orange–blue and yellow–violet. DxO is PhotoLab's own hue axis: the angles are the Hue numbers of its Color Grading and HSL wheels. OKLCH is a perceptual wheel: equal angles look like equal color steps.")
+            Toggle("Skin tone line", isOn: $model.showSkinTone)
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+                .help("Reference band for skin tones (sRGB hue ≈ 13°–37°). Skin-like colors in the list are marked whether or not the line is shown.")
+            HStack(spacing: 8) {
+                if !model.seriesPalette.isEmpty {
+                    Toggle("\(model.referenceTitle) palette", isOn: $model.showSeriesReference)
+                        .toggleStyle(.checkbox)
+                        .controlSize(.small)
+                        .help(model.referencePhoto == nil
+                              ? "Show the shared palette of the series window as diamonds on the wheel and compare this photo's colors with it."
+                              : "Show the palette of the reference photo as diamonds on the wheel and compare this photo's colors with it.")
+                }
+                Spacer(minLength: 0)
+                Menu {
+                    Button("Open Reference Photo…") { model.presentOpenReferencePanel() }
+                    if let reference = model.referencePhoto {
+                        Button("Remove Reference (\(reference.name))") { model.clearReference() }
+                    }
+                } label: {
+                    Label(model.referencePhoto?.name ?? "Reference photo", systemImage: "photo.on.rectangle")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .menuStyle(.borderlessButton)
+                .controlSize(.small)
+                .fixedSize()
+                .disabled(model.image == nil)
+                .help("Load a photo whose look you want to match: its colors become the reference palette on the wheel, in the list and for the Color Grading suggestion.")
+            }
+            if model.isSeriesReferenceShown, let seriesFit = model.seriesFit {
+                seriesFitView(seriesFit, after: model.afterSeriesFit)
+            }
+            if model.hueSpace == .dxo {
+                Text("PhotoLab's wheel: angles are PhotoLab's Hue numbers, so harmonies and target hues are in its terms. The colors in the list keep sRGB degrees.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if model.hueSpace == .oklch {
+                Text("Perceptual wheel (OKLCH): harmonies are computed here, but hue shifts and target hues in the list stay in sRGB degrees.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if model.hueSpace == .ryb {
+                Text("Artist's wheel: harmonies are computed here, but hue shifts and target hues in the list stay in sRGB degrees.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Picker("Harmony", selection: $model.harmonyChoice) {
+                Text("Auto-detect").tag(HarmonyKind?.none)
+                Divider()
+                ForEach(HarmonyKind.allCases) { kind in
+                    Text(kind.displayName).tag(HarmonyKind?.some(kind))
+                }
+            }
+            if let fit {
+                HStack {
+                    Text("\(fit.kind.displayName)\(model.harmonyChoice == nil ? " (detected)" : "")")
+                        .font(.headline)
+                    Spacer()
+                    Text(String(format: "fit ±%.0f°", fit.deviation))
+                        .monospacedDigit()
+                        .foregroundStyle(fitColor(fit.deviation))
+                }
+                if let after = model.afterHarmony {
+                    HStack {
+                        Text(model.afterImage == nil ? "Predicted after grading" : "After grading")
+                            .font(.subheadline)
+                        Spacer()
+                        Text("fit ±\(Int(after.deviation.rounded()))° (\(signedRounded(after.deviation - fit.deviation, unit: "°")))")
+                            .monospacedDigit()
+                            .foregroundStyle(fitColor(after.deviation))
+                    }
+                }
+                HStack {
+                    Text("Target hues (RGB): " + fit.targetRGBHues.map { String(format: "%.0f°", $0) }.joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if model.harmonyRotationOverride != nil {
+                        Button("Reset Rotation") { model.harmonyRotationOverride = nil }
+                            .controlSize(.small)
+                    }
+                }
+            } else if !model.markers.isEmpty {
+                Text("All colors are neutral — no harmony to detect.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            gradingSection()
+        }
+    }
+
+    /// A preview of the suggested tints and hue turns on the photo itself.
+    @ViewBuilder
+    private var previewControls: some View {
+        @Bindable var model = model
+        VStack(alignment: .leading, spacing: 4) {
+            Divider().padding(.vertical, 2)
+            HStack {
+                Toggle("Preview on the photo", isOn: $model.showPreview)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                    .disabled(model.afterImage != nil)
+                    .help("Show the photo with the suggested Color Grading and HSL values applied, right of a divider you can drag or below the original (P)")
+                Spacer()
+                if model.showPreview {
+                    Picker("Amount", selection: $model.previewAmount) {
+                        Text("×1").tag(1.0)
+                        Text("×2").tag(2.0)
+                        Text("×4").tag(4.0)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 110)
+                    .help("×1 is as suggested; ×2 and ×4 exaggerate the tints (not the hue turns), to see the direction of a small suggestion")
+                }
+            }
+            if model.afterImage != nil {
+                Text("Close the comparison with the graded version first: it has the divider.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if model.showPreview {
+                Text(model.previewSettings?.isIdentity == true
+                     ? "The suggestion changes nothing to show."
+                     : "An approximation of the tints and hue turns above, not PhotoLab's own rendering. Drag the divider, or show the preview below the original, to compare.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// The Hue handle of each HSL channel in PhotoLab, in degrees on PhotoLab's own ring.
+    @ViewBuilder
+    private var hslSection: some View {
+        let channels = model.hslSuggestions
+        VStack(alignment: .leading, spacing: 4) {
+            Divider().padding(.vertical, 2)
+            Text("HSL in PhotoLab: Hue per channel")
+                .font(.subheadline.weight(.semibold))
+            if model.effectiveGradingTarget == .emphasize {
+                Text("Choose Harmony" + (model.isSeriesReferenceShown ? " or \(model.referenceTitle)" : "") + " above: there is no hue to turn toward while only the existing tints are strengthened.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if channels.isEmpty {
+                Text("No channel needs a hue shift.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(channels, id: \.channel) { suggestion in
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(SRGBColor.fromHSB(h: suggestion.channel.centerHue ?? 0, s: 0.75, b: 0.95).swiftUIColor)
+                            .frame(width: 12, height: 12)
+                        Text(suggestion.channel.displayName)
+                            .frame(width: 62, alignment: .leading)
+                        Text("Hue \(signedRounded(suggestion.hueShift, unit: "°"))"
+                             + (suggestion.channel.direction(of: suggestion.hueShift).map { " → \($0.displayName.lowercased())" } ?? ""))
+                            .monospacedDigit()
+                        Text("colors " + suggestion.colors.map(String.init).joined(separator: ", "))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .font(.caption)
+                    if suggestion.isMixed {
+                        Text("\(suggestion.channel.displayName): these colors want shifts from \(signedRounded(suggestion.range.lowerBound, unit: "°")) to \(signedRounded(suggestion.range.upperBound, unit: "°")); one handle cannot serve all of them.")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Text("Turn the Hue handle on the outer ring of PhotoLab's HSL wheel by this many degrees, toward the color named after the arrow (red → orange → yellow → green → cyan → blue → purple → magenta is a + turn, counter-clockwise on the ring). Saturation and Luminance you set by eye.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .help("Degrees on PhotoLab's own hue ring, converted from the sRGB hue shifts in the list; accurate to a few degrees.")
+    }
+
+    private func reasonText(_ reason: ColorGradingSuggestion.Reason) -> String {
+        switch reason {
+        case .tinted: ""
+        case .noColors: "no colors here"
+        case .onTarget: "already on target"
+        case .tooNeutral: "too neutral to tint"
+        }
+    }
+
+    /// The suggested DxO Color Grading preset, per tonal range, with the export button.
+    @ViewBuilder
+    private func gradingSection() -> some View {
+        @Bindable var model = model
+        VStack(alignment: .leading, spacing: 6) {
+            Divider().padding(.vertical, 2)
+            HStack {
+                Text("DxO Color Grading")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Picker("Strength", selection: $model.gradingStrength) {
+                    ForEach(ColorGradingSuggestion.Strength.allCases) { Text($0.displayName).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(width: 104)
+                .help("How strongly the tints are applied")
+            }
+            Picker("Style", selection: $model.gradingStyle) {
+                ForEach(GradingStyle.allCases) { Text($0.displayName).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .disabled(model.effectiveGradingTarget == .emphasize)
+            .help("A creative direction on top of the harmony: the greys of the shadows and highlights take on a cast of their own, such as warm highlights over cool shadows. Not available when only the existing tints are strengthened.")
+            if let hint = model.intentionStyle, model.effectiveGradingTarget != .emphasize {
+                HStack(spacing: 6) {
+                    Image(systemName: "lightbulb")
+                        .foregroundStyle(.secondary)
+                    Text("Your intention says “\(hint.words.joined(separator: ", "))”: \(hint.style.displayName.lowercased())?")
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                    Button("Use") { model.gradingStyle = hint.style }
+                        .controlSize(.small)
+                }
+                .font(.caption)
+                .help("Suggested from the words of your Intention; nothing changes until you click Use.")
+            }
+            Picker("Aim at", selection: $model.gradingTarget) {
+                Text("Harmony").tag(AnalysisModel.GradingTarget.harmony)
+                if model.isSeriesReferenceShown {
+                    Text(model.referenceTitle).tag(AnalysisModel.GradingTarget.series)
+                }
+                Text("Tints").tag(AnalysisModel.GradingTarget.emphasize)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .help("Harmony: tint toward the harmony's hues. Series / Reference: toward that palette. Tints: strengthen the faint tint each tonal range already has.")
+            if model.gradingFallsBackToTints {
+                Text("The colors are nearly neutral, so there is nothing to aim at: the grading strengthens the tints the photo already has.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let grading = model.colorGrading {
+                ForEach(grading.details, id: \.range) { detail in
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(detail.tintHue.map { SRGBColor.fromHSB(h: $0, s: 0.65, b: 0.95).swiftUIColor } ?? Color.clear)
+                            .overlay(Circle().strokeBorder(.secondary.opacity(0.5)))
+                            .frame(width: 12, height: 12)
+                        Text(detail.range.displayName)
+                            .frame(width: 78, alignment: .leading)
+                        Group {
+                            if detail.reason == .tinted {
+                                Text(detail.wheel.saturation > 0
+                                     ? "Hue \(detail.wheel.hue) · Sat \(detail.wheel.saturation)"
+                                         + (detail.wheel.luminance != 0 ? " · Lum \(detail.wheel.luminance)" : "")
+                                     : "Lum \(detail.wheel.luminance)")
+                                    .monospacedDigit()
+                            } else {
+                                Text(reasonText(detail.reason))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                    }
+                    .font(.caption)
+                }
+                if grading.preset.master.saturation > 0 {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(SRGBColor.fromHSB(h: DxOHue.toSRGB(Double(grading.preset.master.hue)), s: 0.65, b: 0.95).swiftUIColor)
+                            .overlay(Circle().strokeBorder(.secondary.opacity(0.5)))
+                            .frame(width: 12, height: 12)
+                        Text("Master")
+                            .frame(width: 78, alignment: .leading)
+                        Text("Hue \(grading.preset.master.hue) · Sat \(grading.preset.master.saturation)")
+                            .monospacedDigit()
+                        Spacer()
+                    }
+                    .font(.caption)
+                }
+                if grading.toneBlacks != 0 || grading.toneShadows != 0 {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Light palette, Selective Tone")
+                            .fontWeight(.semibold)
+                        Text([grading.toneBlacks != 0 ? "Blacks \(grading.toneBlacks > 0 ? "+" : "")\(grading.toneBlacks)" : nil,
+                              grading.toneShadows != 0 ? "Shadows \(grading.toneShadows > 0 ? "+" : "")\(grading.toneShadows)" : nil]
+                            .compactMap { $0 }.joined(separator: " · "))
+                            .monospacedDigit()
+                        Text("Set by hand: a Color Grading preset cannot carry them.")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                }
+                if grading.preset.balance != 0 {
+                    Text("Balance \(grading.preset.balance)")
+                        .font(.caption)
+                        .monospacedDigit()
+                }
+                if let fit = grading.fit {
+                    Text(fit.after < fit.before - 0.5
+                         ? "Predicted: the colors are \(Int(fit.before.rounded()))° from their target hues now, \(Int(fit.after.rounded()))° after this grading."
+                         : model.gradingStyle != .neutral && fit.after > fit.before + 0.5
+                         ? "Predicted: the colors are \(Int(fit.before.rounded()))° from their target hues now, \(Int(fit.after.rounded()))° with this style: the cast costs hue accuracy."
+                         : "Predicted: no grading within this strength brings the colors closer to their target hues.")
+                        .font(.caption)
+                        .foregroundStyle(fit.after < fit.before - 0.5 ? Color.green : Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .help("Weighted mean distance in sRGB hue, from the calibrated model of PhotoLab's Color Grading (see the README).")
+                }
+                HStack {
+                    Button("Export Preset…") { model.presentExportPanel(.dxoPreset) }
+                        .controlSize(.small)
+                    Spacer()
+                }
+                Text("A starting point, not a recipe: Hue and Saturation of the three wheels are chosen with a model of PhotoLab's Color Grading, measured on a chart (see the README), so that the dominant colors end up as close as possible to their target hues. The Strength limits the Saturation. Check it in PhotoLab.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                previewControls
+                hslSection
+            } else {
+                Text("Needs colors with a harmony.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// The skin tone reference: a line at the reference hue inside a faint wedge covering the band
+/// in which colors read as skin. Positions follow the active wheel (RGB or RYB).
+struct SkinToneOverlay: View {
+    let space: HueSpace
+    let center: CGPoint
+    let radius: CGFloat
+
+    private let lineColor = Color(red: 1.0, green: 0.86, blue: 0.72)
+
+    var body: some View {
+        let range = SkinTone.hueRange
+        let start = space.position(ofRGBHue: range.lowerBound)
+        let span = ColorMath.signedAngle(from: start, to: space.position(ofRGBHue: range.upperBound))
+        let rim = { (angle: Double) in WheelGeometry.point(hue: angle, saturation: 1, center: center, radius: radius) }
+        let wedge = Path { path in
+            path.move(to: center)
+            for step in 0...12 {
+                path.addLine(to: rim(start + span * Double(step) / 12))
+            }
+            path.closeSubpath()
+        }
+        ZStack {
+            wedge.fill(lineColor.opacity(0.32))
+            wedge.stroke(.white.opacity(0.55), lineWidth: 1)
+            Path { path in
+                path.move(to: center)
+                path.addLine(to: WheelGeometry.point(rgbHue: SkinTone.referenceHue, space: space, saturation: 1,
+                                                     center: center, radius: radius))
+            }
+            .stroke(lineColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+            .shadow(color: .black.opacity(0.65), radius: 1.5)
+            Text("skin")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.black.opacity(0.75))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1.5)
+                .background(lineColor, in: Capsule())
+                .position(WheelGeometry.point(rgbHue: SkinTone.referenceHue, space: space, saturation: 1.1,
+                                              center: center, radius: radius))
+        }
+    }
+}
+
+/// The shared palette of the series as diamonds on the wheel: where this photo should land.
+struct SeriesReferenceOverlay: View {
+    let palette: [SharedColor]
+    let space: HueSpace
+    let center: CGPoint
+    let radius: CGFloat
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(palette.enumerated()), id: \.offset) { index, shared in
+                let hsb = shared.color.hsb
+                ReferenceDiamond(number: index + 1, color: shared.color, size: 20 + 24 * sqrt(shared.share))
+                    .position(WheelGeometry.point(rgbHue: hsb.h, space: space, saturation: hsb.s,
+                                                  center: center, radius: radius))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// A rotated square with a dashed rim, so it cannot be mistaken for a round marker.
+struct ReferenceDiamond: View {
+    let number: Int
+    let color: SRGBColor
+    var size: CGFloat = 28
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color.swiftUIColor)
+                .frame(width: size * 0.72, height: size * 0.72)
+                .rotationEffect(.degrees(45))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 3)
+                        .strokeBorder(.white, style: StrokeStyle(lineWidth: 2, dash: [4, 2]))
+                        .frame(width: size * 0.72, height: size * 0.72)
+                        .rotationEffect(.degrees(45))
+                }
+                .shadow(color: .black.opacity(0.5), radius: 2.5, y: 1)
+            Text("\(number)")
+                .font(.system(size: max(8, size * 0.32), weight: .bold, design: .rounded))
+                .foregroundStyle(color.contrastingText)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// Spokes at the harmony's target hues, plus an arc from each color to its nearest target.
+struct HarmonyOverlay: View {
+    let fit: HarmonyFit
+    let markers: [Marker]
+    let center: CGPoint
+    let radius: CGFloat
+
+    var body: some View {
+        ZStack {
+            Path { path in
+                for hue in fit.targets {
+                    path.move(to: center)
+                    path.addLine(to: WheelGeometry.point(hue: hue, saturation: 1, center: center, radius: radius))
+                }
+            }
+            .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+            .shadow(color: .black.opacity(0.6), radius: 1.5)
+
+            Path { path in
+                for marker in markers where DxOMapping.harmonyWeight(color: marker.color, share: 1) > 0 {
+                    let hsb = marker.color.hsb
+                    // From the color's position to its target's position, along the wheel the harmony lives on.
+                    let start = fit.space.position(ofRGBHue: hsb.h)
+                    let delta = ColorMath.signedAngle(from: start, to: fit.space.position(ofRGBHue: hsb.h + fit.shift(for: hsb.h)))
+                    guard abs(delta) >= 2 else { continue }
+                    let steps = max(2, Int(abs(delta) / 2))
+                    for step in 0...steps {
+                        let p = WheelGeometry.point(hue: start + delta * Double(step) / Double(steps),
+                                                    saturation: min(hsb.s, 1.1), center: center, radius: radius)
+                        step == 0 ? path.move(to: p) : path.addLine(to: p)
+                    }
+                    let end = WheelGeometry.point(hue: start + delta, saturation: min(hsb.s, 1.1), center: center, radius: radius)
+                    path.addEllipse(in: CGRect(x: end.x - 3, y: end.y - 3, width: 6, height: 6))
+                }
+            }
+            .stroke(.black.opacity(0.55), lineWidth: 1.5)
+        }
+    }
+}
+
+/// CIE L* of each color on a black→white bar, split into DxO's tonal ranges.
+struct LightnessStrip: View {
+    let markers: [Marker]
+    let selectedID: Marker.ID?
+    /// Color at each marker's position in the graded version, if one is loaded (same order as `markers`).
+    let afterColors: [SRGBColor?]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    LinearGradient(colors: [.black, .white], startPoint: .leading, endPoint: .trailing)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .frame(height: 10)
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                    ForEach([33.0, 66.0], id: \.self) { l in
+                        Rectangle().fill(.red.opacity(0.7))
+                            .frame(width: 1, height: geo.size.height)
+                            .position(x: geo.size.width * l / 100, y: geo.size.height / 2)
+                    }
+                    ForEach(Array(markers.enumerated()), id: \.element.id) { index, marker in
+                        MarkerBadge(number: index + 1, color: marker.color, diameter: 18,
+                                    isSelected: marker.id == selectedID)
+                            .position(x: geo.size.width * min(100, max(0, marker.color.lightness)) / 100,
+                                      y: geo.size.height / 2)
+                        if index < afterColors.count, let after = afterColors[index] {
+                            GhostBadge(number: index + 1, color: after, diameter: 14)
+                                .position(x: geo.size.width * min(100, max(0, after.lightness)) / 100,
+                                          y: geo.size.height / 2 + 9)
+                        }
+                    }
+                }
+            }
+            .frame(height: 26)
+            HStack {
+                Text("Shadows")
+                Spacer()
+                Text("Midtones")
+                Spacer()
+                Text("Highlights")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Arrows from each color's original position on the wheel to where it ended up after grading.
+struct AfterTrails: View {
+    let markers: [Marker]
+    /// Color at each marker's position in the graded version (same order as `markers`).
+    let afterColors: [SRGBColor?]
+    let space: HueSpace
+    let center: CGPoint
+    let radius: CGFloat
+
+    var body: some View {
+        Path { path in
+            for (marker, afterColor) in zip(markers, afterColors) {
+                guard let after = afterColor else { continue }
+                let b = marker.color.hsb, a = after.hsb
+                let from = WheelGeometry.point(rgbHue: b.h, space: space, saturation: b.s, center: center, radius: radius)
+                let to = WheelGeometry.point(rgbHue: a.h, space: space, saturation: a.s, center: center, radius: radius)
+                let length = hypot(to.x - from.x, to.y - from.y)
+                guard length > 6 else { continue }
+                path.move(to: from)
+                path.addLine(to: to)
+                // Arrow head.
+                let angle = atan2(to.y - from.y, to.x - from.x)
+                for side in [-1.0, 1.0] {
+                    path.move(to: to)
+                    path.addLine(to: CGPoint(x: to.x - 9 * cos(angle + side * 0.45),
+                                             y: to.y - 9 * sin(angle + side * 0.45)))
+                }
+            }
+        }
+        .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+        .shadow(color: .black.opacity(0.7), radius: 1.5)
+    }
+}
