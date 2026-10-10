@@ -142,11 +142,11 @@ enum CompareMode: String, CaseIterable, Identifiable {
 
 @Observable @MainActor
 final class AnalysisModel {
-    private(set) var image: LoadedImage?
-    private(set) var isAnalyzing = false
+    var image: LoadedImage?
+    var isAnalyzing = false
     var errorMessage: String?
 
-    private(set) var markers: [Marker] = []
+    var markers: [Marker] = []
     var selectedMarkerID: Marker.ID? {
         didSet { if selectedMarkerID != oldValue { refreshRegion() } }
     }
@@ -161,23 +161,91 @@ final class AnalysisModel {
         didSet { if hoveredMarkerID != oldValue { refreshRegion() } }
     }
 
+
+    // MARK: State of the extensions (stored properties cannot live in an extension)
+
+    /// How strongly the suggested tints are applied (the saturation of a wheel whose colors are 30° or more off).
+    var gradingStrength = ColorGradingSuggestion.Strength(rawValue: UserDefaults.standard.string(forKey: "gradingStrength") ?? "")
+        ?? .moderate {
+        didSet { if rememberGradingStrength { UserDefaults.standard.set(gradingStrength.rawValue, forKey: "gradingStrength") } }
+    }
+
+    @ObservationIgnored var rememberGradingStrength = true
+
+    /// A creative direction on top of the harmony: warm highlights over cool shadows, or the reverse. Remembered.
+    var gradingStyle = (AnalysisModel.remembered("gradingStyle") as String?).flatMap(GradingStyle.init(rawValue:)) ?? .neutral {
+        didSet { if gradingStyle != oldValue { remember(gradingStyle.rawValue, as: "gradingStyle") } }
+    }
+
+    var gradingTarget = GradingTarget.harmony
+
+    @ObservationIgnored var gradingCache: (key: Int, grading: ColorGradingSuggestion.Suggestion?)?
+
+    @ObservationIgnored var predictionCache: (key: Int, settings: GradePreviewSettings?, plan: GradePreview.Plan?)?
+
+    @ObservationIgnored var whiteBalanceCache: (key: String, check: WhiteBalanceCheck)?
+
+    /// Overrides the series palette while it is set. Stays when another photo is opened, so one reference can
+    /// serve a whole batch; it is not part of the saved session.
+    var referencePhoto: ReferencePhoto?
+
+    /// Shows the photo with the suggested Color Grading tints and HSL hue turns applied (right of the divider).
+    var showPreview = AnalysisModel.remembered("showPreview") ?? false {
+        didSet {
+            if showPreview != oldValue { remember(showPreview, as: "showPreview"); refreshPreview() }
+        }
+    }
+
+    var previewLayout = (AnalysisModel.remembered("previewLayout") as String?).flatMap(PreviewLayout.init(rawValue:)) ?? .split {
+        didSet { if previewLayout != oldValue { remember(previewLayout.rawValue, as: "previewLayout") } }
+    }
+
+    /// 1 = as suggested; 2 and 4 exaggerate, because a suggestion of a few points is hard to see.
+    var previewAmount = AnalysisModel.remembered("previewAmount") ?? 1.0 {
+        didSet { if previewAmount != oldValue { remember(previewAmount, as: "previewAmount"); refreshPreview() } }
+    }
+
+    var previewImage: CGImage?
+
+    @ObservationIgnored var previewTask: Task<Void, Never>?
+
+    @ObservationIgnored var previewGeneration = 0
+
+    /// The window's undo manager (Edit ▸ Undo / Redo, ⌘Z / ⇧⌘Z); handed over by the main view.
+    @ObservationIgnored weak var undoManager: UndoManager? {
+        didSet { undoManager?.levelsOfUndo = 200 }
+    }
+
+    /// Marker state at the start of the current drag, recorded as one undo step once the marker really moves.
+    @ObservationIgnored var pendingMoveUndo: (name: String, state: MarkerState)?
+
+    /// Last arrow-key nudge: keys pressed one after the other on the same marker are one undo step.
+    @ObservationIgnored var lastNudge: (id: Marker.ID, time: Date)?
+
+    /// Skin-like colors are protected by themselves when this is on, unless protection was set by hand. Remembered.
+    var protectSkin = AnalysisModel.remembered("protectSkin") ?? true {
+        didSet {
+            if protectSkin != oldValue { remember(protectSkin, as: "protectSkin"); isDirty = true; refreshPreview() }
+        }
+    }
+
     // MARK: Remembered settings
     //
     // Colors, wheel, subject weighting, skin tone line, Color Grading strength and preview are remembered between launches
     // (UserDefaults). A saved session of a photo overrides them for that photo, and a setting given on the command line
     // applies to that run only: neither changes what is remembered.
 
-    @ObservationIgnored private var suppressRemembering = 0
+    @ObservationIgnored var suppressRemembering = 0
     /// Runs `body` with changes to the settings not remembered.
     func withoutRemembering(_ body: () -> Void) {
         suppressRemembering += 1
         body()
         suppressRemembering -= 1
     }
-    private func remember(_ value: Any, as key: String) {
+    func remember(_ value: Any, as key: String) {
         if suppressRemembering == 0 { UserDefaults.standard.set(value, forKey: "setting." + key) }
     }
-    private static func remembered<T>(_ key: String) -> T? { UserDefaults.standard.object(forKey: "setting." + key) as? T }
+    static func remembered<T>(_ key: String) -> T? { UserDefaults.standard.object(forKey: "setting." + key) as? T }
 
     var colorCount = AnalysisModel.remembered("colorCount").map { min(12, max(3, $0)) } ?? 6 {
         didSet {
@@ -236,12 +304,12 @@ final class AnalysisModel {
     var showSaliency = false {
         didSet { if showSaliency != oldValue { refreshSaliencyOverlay() } }
     }
-    private(set) var saliencyOverlay: CGImage?
+    var saliencyOverlay: CGImage?
     /// True when the current shares and markers were computed with subject weights.
-    private(set) var isWeighted = false
-    @ObservationIgnored private var weights: [Float]?
-    @ObservationIgnored private var saliency: [Float]?
-    @ObservationIgnored private var saliencyFailed = false
+    var isWeighted = false
+    @ObservationIgnored var weights: [Float]?
+    @ObservationIgnored var saliency: [Float]?
+    @ObservationIgnored var saliencyFailed = false
 
     /// What the photo should feel like, written down before choosing a harmony. Saved in the session.
     var intention = "" {
@@ -249,10 +317,10 @@ final class AnalysisModel {
     }
 
     /// True when the markers, harmony or comparison differ from what is saved next to the photo.
-    private(set) var isDirty = false
+    var isDirty = false
     /// Short status message ("Saved …"), cleared after a few seconds.
-    private(set) var notice: String?
-    @ObservationIgnored private var isRestoring = false
+    var notice: String?
+    @ObservationIgnored var isRestoring = false
 
     // MARK: Zoom
 
@@ -287,11 +355,11 @@ final class AnalysisModel {
         didSet { if showRegions != oldValue { refreshRegion() } }
     }
     /// Dims everything except the pixels that belong to the hovered/selected marker's color.
-    private(set) var regionOverlay: CGImage?
+    var regionOverlay: CGImage?
     /// Share of the photo covered by the highlighted region (0...1).
-    private(set) var regionCoverage: Double?
+    var regionCoverage: Double?
     /// Same region as a share of the subject-weighted photo; nil when weighting is off.
-    private(set) var regionWeightedShare: Double?
+    var regionWeightedShare: Double?
 
     var highlightedMarkerID: Marker.ID? { hoveredMarkerID ?? selectedMarkerID }
 
@@ -307,7 +375,7 @@ final class AnalysisModel {
     // MARK: Before / after
 
     /// A graded version of the same photo (e.g. a DxO export), sampled at the marker positions.
-    private(set) var afterImage: LoadedImage?
+    var afterImage: LoadedImage?
     var compareMode = CompareMode.split
     /// Position of the split divider, 0...1 across the photo.
     var splitPosition = 0.5
@@ -396,7 +464,7 @@ final class AnalysisModel {
         Task { await loadGraded(url, markDirty: true) }
     }
 
-    private func loadGraded(_ url: URL, markDirty: Bool) async {
+    func loadGraded(_ url: URL, markDirty: Bool) async {
         do {
             afterImage = try await Task.detached(priority: .userInitiated) {
                 try ImageLoader.load(url: url)
@@ -428,7 +496,7 @@ final class AnalysisModel {
         Task { await runAnalysis(markDirty: true) }
     }
 
-    private func runAnalysis(markDirty: Bool) async {
+    func runAnalysis(markDirty: Bool) async {
         guard let image else { return }
         isAnalyzing = true
         let count = colorCount
@@ -453,19 +521,19 @@ final class AnalysisModel {
     // MARK: Subject weighting
 
     /// Changes the weighting without re-analyzing (the caller does that).
-    private func setWeighting(_ value: Weighting) {
+    func setWeighting(_ value: Weighting) {
         isRestoring = true
         withoutRemembering { weighting = value }   // a weighting given for one photo (command line, session) is not a preference
         isRestoring = false
     }
 
-    private func setWeights(_ value: [Float]?) {
+    func setWeights(_ value: [Float]?) {
         weights = value
         isWeighted = value != nil
     }
 
     /// Computes the pixel weights for the current weighting (detecting the subject if needed).
-    private func prepareWeights() async {
+    func prepareWeights() async {
         guard weighting != .off, let map = await ensureSaliency() else {
             setWeights(nil)
             return
@@ -474,7 +542,7 @@ final class AnalysisModel {
     }
 
     /// Detects the subject once per photo, at the resolution used for analysis.
-    private func ensureSaliency() async -> [Float]? {
+    func ensureSaliency() async -> [Float]? {
         if let saliency { return saliency }
         guard let image, !saliencyFailed else { return nil }
         let (width, height) = (image.analysis.width, image.analysis.height)
@@ -491,7 +559,7 @@ final class AnalysisModel {
         return map
     }
 
-    private func refreshSaliencyOverlay() {
+    func refreshSaliencyOverlay() {
         guard showSaliency else {
             saliencyOverlay = nil
             return
@@ -502,756 +570,4 @@ final class AnalysisModel {
         }
     }
 
-    // MARK: Session
-
-    func makeSession() -> Session? {
-        guard let image else { return nil }
-        return Session(
-            photo: image.url.lastPathComponent,
-            graded: afterImage?.url.path,
-            colorCount: colorCount,
-            weighting: weighting == .off ? nil : weighting.rawValue,
-            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex, isProtected: $0.protection) },
-            harmony: harmonyChoice?.rawValue,
-            harmonyRotation: harmonyRotationOverride,
-            hueSpace: hueSpace == .rgb ? nil : hueSpace.rawValue,
-            compareMode: afterImage == nil ? nil : compareMode.rawValue,
-            splitPosition: afterImage == nil ? nil : splitPosition,
-            intention: intention,
-            reference: referencePhoto?.url.path
-        )
-    }
-
-    /// Writes the session as JSON next to the photo.
-    func saveSession() {
-        guard let image, let session = makeSession() else { return }
-        let sidecar = Session.sidecarURL(for: image.url)
-        do {
-            try session.write(to: sidecar)
-            isDirty = false
-            showNotice("Saved session as \(sidecar.lastPathComponent)")
-        } catch {
-            errorMessage = "Could not save the session next to the photo: \(error.localizedDescription)"
-        }
-    }
-
-    private func savedSession(for photo: URL) -> Session? {
-        let sidecar = Session.sidecarURL(for: photo)
-        guard FileManager.default.fileExists(atPath: sidecar.path) else { return nil }
-        do {
-            return try Session.read(from: sidecar)
-        } catch {
-            errorMessage = "Could not restore the saved session (\(error.localizedDescription)). The photo was analyzed again."
-            return nil
-        }
-    }
-
-    /// Re-creates markers from a saved session. Colors are sampled from the photo again.
-    private func restore(_ session: Session, photo: URL, graded override: URL?) async {
-        suppressRemembering += 1
-        defer { suppressRemembering -= 1 }
-        isRestoring = true
-        colorCount = min(12, max(3, session.colorCount))
-        weighting = session.weighting.flatMap(Weighting.init(rawValue:)) ?? .off
-        isRestoring = false
-        await prepareWeights()
-        hueSpace = session.hueSpace.flatMap(HueSpace.init(rawValue:)) ?? .rgb
-        intention = session.intention ?? ""
-        harmonyChoice = session.harmony.flatMap(HarmonyKind.init(rawValue:))
-        harmonyRotationOverride = session.harmonyRotation
-        markers = session.markers.map { saved in
-            let location = CGPoint(x: min(1, max(0, saved.x)), y: min(1, max(0, saved.y)))
-            var marker = Marker(location: location, color: sample(at: location))
-            marker.protection = saved.isProtected
-            return marker
-        }
-        selectedMarkerID = nil
-        hoveredMarkerID = nil
-        updateShares()
-        isAnalyzing = false
-        refreshPreview()
-
-        if let gradedURL = override ?? session.gradedURL(photoFolder: photo.deletingLastPathComponent()) {
-            await loadGraded(gradedURL, markDirty: false)
-            if afterImage != nil {
-                compareMode = session.compareMode.flatMap(CompareMode.init(rawValue:)) ?? .split
-                splitPosition = session.splitPosition ?? 0.5
-            }
-        }
-        // The reference the photo was aimed at; one that is missing leaves the current reference alone.
-        var missingReference: String?
-        if let reference = session.reference {
-            if let referenceURL = session.referenceURL(photoFolder: photo.deletingLastPathComponent()) {
-                await openReference(referenceURL).value
-            } else {
-                missingReference = URL(fileURLWithPath: reference).lastPathComponent
-            }
-        }
-        isDirty = false
-        showNotice(missingReference.map { "Restored the saved session; the reference photo \($0) was not found" }
-                   ?? "Restored the saved session")
-    }
-
-    private func showNotice(_ text: String) {
-        notice = text
-        Task {
-            try? await Task.sleep(for: .seconds(5))
-            if notice == text { notice = nil }
-        }
-    }
-
-    // MARK: Report export
-
-    func reportData() -> ReportData? {
-        guard let image else { return nil }
-        return ReportData(
-            title: image.url.lastPathComponent,
-            date: Date(),
-            before: image.display,
-            after: afterImage?.display,
-            markers: markers,
-            afterColors: markers.map { afterImage == nil ? nil : afterColor(for: $0) },
-            harmony: harmony,
-            harmonyIsAutoDetected: harmonyChoice == nil,
-            afterHarmony: afterImage == nil ? nil : afterHarmony,
-            weighting: isWeighted ? weighting.title : nil,
-            hueSpace: hueSpace,
-            showSkinTone: showSkinTone,
-            seriesPalette: isSeriesReferenceShown ? seriesPalette : [],
-            referenceTitle: referenceTitle,
-            seriesInfos: markers.map { seriesInfo(for: $0) },
-            seriesFit: seriesFit,
-            afterSeriesFit: afterImage == nil ? nil : afterSeriesFit,
-            intention: Intention.cleaned(intention)
-        )
-    }
-
-    func exportReport(to url: URL) throws {
-        guard let data = reportData() else { throw ReportError.noPhoto }
-        guard let png = ReportRenderer.pngData(for: data) else { throw ReportError.renderFailed }
-        try png.write(to: url, options: .atomic)
-    }
-
-    /// The color list with the context needed to interpret it (harmony, graded version).
-    func colorExport() -> ColorExport? {
-        guard let image else { return nil }
-        let fit = harmony
-        let records = markers.enumerated().map { index, marker in
-            ColorRecord(number: index + 1, location: marker.location, color: marker.color, share: marker.share,
-                        areaShare: isWeighted ? marker.areaShare : nil,
-                        after: afterImage == nil ? nil : afterColor(for: marker), harmony: fit)
-        }
-        return ColorExport(
-            photo: image.url.lastPathComponent,
-            graded: afterImage?.url.path,
-            weighting: isWeighted ? weighting.rawValue : nil,
-            intention: intention,
-            harmony: fit.map { .init(fit: $0, autoDetected: harmonyChoice == nil, fitAfter: afterImage == nil ? nil : afterHarmony) },
-            whiteBalance: whiteBalance.verdict == .unknown ? nil : .init(whiteBalance),
-            colors: records
-        )
-    }
-
-    func exportColors(to url: URL, format: ExportFormat) throws {
-        guard let export = colorExport() else { throw ReportError.noPhoto }
-        switch format {
-        case .colorsCSV: try Data(export.csv().utf8).write(to: url, options: .atomic)
-        case .colorsCSVExcel: try Data(export.csv(style: .europeanExcel).utf8).write(to: url, options: .atomic)
-        case .colorsJSON: try export.json().write(to: url, options: .atomic)
-        case .reportPNG: try exportReport(to: url)
-        case .swatches:
-            let swatches = markers.enumerated().map { ("\($0.offset + 1) – \($0.element.color.hex)", $0.element.color) }
-            let group = (image?.url.deletingPathExtension().lastPathComponent ?? "Photo") + " – ColorAnalyze"
-            try AdobeSwatchExchange.data(groupName: group, swatches: swatches).write(to: url, options: .atomic)
-        case .palettePNG:
-            guard let image, let png = ReportRenderer.pngData(for: PaletteData(
-                title: image.url.lastPathComponent,
-                subtitle: "\(markers.count) dominant colors · " + Date().formatted(date: .long, time: .shortened),
-                entries: markers.enumerated().map { .init(number: $0.offset + 1, color: $0.element.color, share: $0.element.share) }
-            )) else { throw ReportError.renderFailed }
-            try png.write(to: url, options: .atomic)
-        case .dxoPreset:
-            guard let grading = colorGrading else { throw ReportError.noGrading }
-            try Data(grading.preset.luaText().utf8).write(to: url, options: .atomic)
-        }
-    }
-
-    func presentExportPanel(_ format: ExportFormat) {
-        guard let image else { return }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [format.contentType]
-        panel.nameFieldStringValue = image.url.deletingPathExtension().lastPathComponent + format.fileNameSuffix + "." + format.fileExtension
-        panel.directoryURL = (format == .dxoPreset ? DxOLocations.colorGradingPresetsFolder() : nil)
-            ?? image.url.deletingLastPathComponent()
-        panel.message = format.panelMessage
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try exportColors(to: url, format: format)
-            showNotice("Exported \(url.lastPathComponent)")
-        } catch {
-            errorMessage = "Could not export \(format.shortName): \(error.localizedDescription)"
-        }
-    }
-
-    // MARK: Marker editing
-
-    /// The markers and the selection, as undo restores them.
-    private struct MarkerState: Sendable {
-        var markers: [Marker]
-        var selected: Marker.ID?
-    }
-
-    /// The window's undo manager (Edit ▸ Undo / Redo, ⌘Z / ⇧⌘Z); handed over by the main view.
-    @ObservationIgnored weak var undoManager: UndoManager? {
-        didSet { undoManager?.levelsOfUndo = 200 }
-    }
-    /// Marker state at the start of the current drag, recorded as one undo step once the marker really moves.
-    @ObservationIgnored private var pendingMoveUndo: (name: String, state: MarkerState)?
-
-    private var markerState: MarkerState { MarkerState(markers: markers, selected: selectedMarkerID) }
-
-    /// Makes the current markers the state that Undo returns to, under `name` ("Undo Move Marker 3").
-    private func registerMarkerUndo(_ name: String, state: MarkerState? = nil) {
-        guard let undoManager else { return }
-        let state = state ?? markerState
-        undoManager.registerUndo(withTarget: self) { model in
-            MainActor.assumeIsolated { model.restoreMarkers(state, name: name) }
-        }
-        undoManager.setActionName(name)
-    }
-
-    /// Puts earlier markers back. The state it replaces is registered as well, so Undo and Redo mirror each other.
-    private func restoreMarkers(_ state: MarkerState, name: String) {
-        registerMarkerUndo(name)
-        markers = state.markers
-        selectedMarkerID = state.selected.flatMap { id in state.markers.contains { $0.id == id } ? id : nil }
-        hoveredMarkerID = nil
-        updateShares()
-        isDirty = true
-        showNotice(undoManager?.isRedoing == true ? "Redid \(name)" : "Undid \(name)")
-    }
-
-    /// Call when a drag on a marker starts; the undo step is recorded when the marker moves.
-    func beginMarkerMove(_ id: Marker.ID) {
-        releaseKeyboardFocus()
-        pendingMoveUndo = ("Move Marker \(number(of: id))", markerState)
-    }
-
-    func endMarkerMove() {
-        pendingMoveUndo = nil
-    }
-
-    /// Last arrow-key nudge: keys pressed one after the other on the same marker are one undo step.
-    @ObservationIgnored private var lastNudge: (id: Marker.ID, time: Date)?
-
-    /// Moves the selected marker by whole pixels of the displayed photo (arrow keys; ⇧ = 10).
-    /// Returns false when no marker is selected, so the key can do its usual job.
-    func nudgeSelectedMarker(dx: Int, dy: Int) -> Bool {
-        guard let image, let id = selectedMarkerID, let i = markers.firstIndex(where: { $0.id == id }) else { return false }
-        let now = Date()
-        if lastNudge?.id != id || now.timeIntervalSince(lastNudge?.time ?? .distantPast) > 1.0 {
-            registerMarkerUndo("Nudge Marker \(i + 1)")
-        }
-        lastNudge = (id, now)
-        let location = markers[i].location
-        moveMarkerWithoutUndo(id, to: CGPoint(x: location.x + Double(dx) / Double(image.display.width),
-                                              y: location.y + Double(dy) / Double(image.display.height)))
-        return true
-    }
-
-    func moveMarker(_ id: Marker.ID, to location: CGPoint) {
-        guard let i = markers.firstIndex(where: { $0.id == id }) else { return }
-        if let pending = pendingMoveUndo {
-            registerMarkerUndo(pending.name, state: pending.state)
-            pendingMoveUndo = nil
-        }
-        moveMarkerWithoutUndo(id, to: location)
-    }
-
-    private func moveMarkerWithoutUndo(_ id: Marker.ID, to location: CGPoint) {
-        guard let i = markers.firstIndex(where: { $0.id == id }) else { return }
-        let clamped = CGPoint(x: min(1, max(0, location.x)), y: min(1, max(0, location.y)))
-        markers[i].location = clamped
-        markers[i].color = sample(at: clamped)
-        updateShares()
-        isDirty = true
-    }
-
-    /// Adds a marker on the color that no marker represents yet — a small subject or an accent that the
-    /// automatic analysis passed over (a red boat on blue water). Every call finds the next one.
-    @discardableResult
-    func suggestMarker() -> Task<Void, Never> {
-        guard let image, !isAnalyzing else { return Task {} }
-        let existing = markers.map(\.color.oklab)
-        let pixelWeights = weights
-        return Task {
-            let found = await Task.detached(priority: .userInitiated) {
-                DominantColorAnalyzer.findMissingColor(in: image.analysis, existing: existing, weights: pixelWeights)
-            }.value
-            guard self.image?.url == image.url else { return }
-            guard let found else {
-                showNotice("Every part of the photo is already close to a marker color")
-                return
-            }
-            addMarker(at: found.location, name: "Suggest Marker")
-            showNotice("Added a marker on a color that was missing")
-        }
-    }
-
-    func addMarker(at location: CGPoint, name: String = "Add Marker") {
-        guard image != nil else { return }
-        registerMarkerUndo(name)
-        let marker = Marker(location: location, color: sample(at: location))
-        markers.append(marker)
-        selectedMarkerID = marker.id
-        updateShares()
-        isDirty = true
-    }
-
-    func removeMarker(_ id: Marker.ID?) {
-        guard let id, markers.contains(where: { $0.id == id }) else { return }
-        registerMarkerUndo("Remove Marker \(number(of: id))")
-        markers.removeAll { $0.id == id }
-        if selectedMarkerID == id { selectedMarkerID = nil }
-        if hoveredMarkerID == id { hoveredMarkerID = nil }
-        updateShares()
-        isDirty = true
-    }
-
-    /// Protects a color (or lifts the protection): the suggestions then leave its hue where it is.
-    func toggleProtected(_ id: Marker.ID) {
-        guard let i = markers.firstIndex(where: { $0.id == id }) else { return }
-        let protect = !isProtected(markers[i])
-        registerMarkerUndo(protect ? "Protect Color" : "Unprotect Color")
-        // Back to automatic when the choice is what automatic would do anyway.
-        markers[i].protection = protect == isAutomaticallyProtected(markers[i]) ? nil : protect
-        isDirty = true
-        refreshPreview()
-    }
-
-    /// Skin-like colors are protected by themselves when this is on, unless protection was set by hand. Remembered.
-    var protectSkin = AnalysisModel.remembered("protectSkin") ?? true {
-        didSet {
-            if protectSkin != oldValue { remember(protectSkin, as: "protectSkin"); isDirty = true; refreshPreview() }
-        }
-    }
-
-    private func isAutomaticallyProtected(_ marker: Marker) -> Bool {
-        protectSkin && SkinTone.offset(of: marker.color) != nil
-    }
-
-    /// True when the suggestions leave this color's hue alone: protected by hand, or a skin tone with automatic protection on.
-    func isProtected(_ marker: Marker) -> Bool {
-        marker.protection ?? isAutomaticallyProtected(marker)
-    }
-
-    /// Why a color is protected, for the list; nil when it is not.
-    func protectionNote(for marker: Marker) -> String? {
-        guard isProtected(marker) else { return nil }
-        if marker.protection == true { return "Kept as it is: the suggestions do not aim it at the harmony" }
-        return "Skin tone, kept as it is: the suggestions do not aim it at the harmony"
-    }
-
-    func number(of id: Marker.ID) -> Int {
-        (markers.firstIndex { $0.id == id } ?? 0) + 1
-    }
-
-    private func sample(at location: CGPoint) -> SRGBColor {
-        image?.sampling.sample(at: location, radius: sampleRadius) ?? SRGBColor(r: 0, g: 0, b: 0)
-    }
-
-    private func updateShares() {
-        guard let image else { return }
-        let colors = markers.map(\.color.oklab)
-        let area = DominantColorAnalyzer.shares(of: colors, in: image.analysis)
-        let weighted = weights.map { DominantColorAnalyzer.shares(of: colors, in: image.analysis, weights: $0) } ?? area
-        for i in markers.indices {
-            markers[i].areaShare = area[i]
-            markers[i].share = weighted[i]
-        }
-        refreshRegion()
-    }
-
-    private func refreshRegion() {
-        guard showRegions, let image, let id = highlightedMarkerID,
-              let index = markers.firstIndex(where: { $0.id == id }) else {
-            regionOverlay = nil
-            regionCoverage = nil
-            regionWeightedShare = nil
-            return
-        }
-        let mask = RegionMask(colorAt: index, of: markers.map(\.color.oklab), in: image.analysis)
-        regionOverlay = mask.overlayImage()
-        regionCoverage = mask.coverage
-        regionWeightedShare = isWeighted ? markers[index].share : nil
-    }
-
-    // MARK: DxO Color Grading
-
-    /// What the suggested Color Grading preset aims at.
-    enum GradingTarget: String, CaseIterable, Identifiable {
-        /// Toward the harmony's target hues.
-        case harmony
-        /// Toward the matching colors of the series palette.
-        case series
-        /// Strengthen the faint tint each tonal range already has (for photos without real colors).
-        case emphasize
-        var id: String { rawValue }
-    }
-
-    /// How strongly the suggested tints are applied (the saturation of a wheel whose colors are 30° or more off).
-    var gradingStrength = ColorGradingSuggestion.Strength(rawValue: UserDefaults.standard.string(forKey: "gradingStrength") ?? "")
-        ?? .moderate {
-        didSet { if rememberGradingStrength { UserDefaults.standard.set(gradingStrength.rawValue, forKey: "gradingStrength") } }
-    }
-    @ObservationIgnored private var rememberGradingStrength = true
-
-    /// Sets the strength for this run only (command line); the remembered preference is left alone.
-    func useGradingStrength(_ strength: ColorGradingSuggestion.Strength) {
-        rememberGradingStrength = false
-        gradingStrength = strength
-        rememberGradingStrength = true
-    }
-    /// A creative direction on top of the harmony: warm highlights over cool shadows, or the reverse. Remembered.
-    var gradingStyle = (AnalysisModel.remembered("gradingStyle") as String?).flatMap(GradingStyle.init(rawValue:)) ?? .neutral {
-        didSet { if gradingStyle != oldValue { remember(gradingStyle.rawValue, as: "gradingStyle") } }
-    }
-    /// The style the intention points to (*warme avond* → warm highlights), when it is not the one chosen.
-    var intentionStyle: (style: GradingStyle, words: [String])? {
-        guard let suggestion = Intention.suggestedStyle(for: intention), suggestion.style != gradingStyle else { return nil }
-        return suggestion
-    }
-    var gradingTarget = GradingTarget.harmony
-
-    /// Where the grading really aims: the series palette only when it is available and shown, and the
-    /// existing tints when there is no harmony to aim at (a photo of fog, dusk or in black and white).
-    var effectiveGradingTarget: GradingTarget {
-        switch gradingTarget {
-        case .emphasize: return .emphasize
-        case .series where isSeriesReferenceShown: return .series
-        default: return harmony == nil ? .emphasize : .harmony
-        }
-    }
-
-    /// True when "Harmony" or "Series" was chosen but the grading falls back to the existing tints.
-    var gradingFallsBackToTints: Bool {
-        gradingTarget != .emphasize && effectiveGradingTarget == .emphasize
-    }
-
-    /// Per tonal range, the tint that brings the photo's colors closest to the harmony (or the series palette), found with
-    /// the calibrated model of PhotoLab's Color Grading. The result is kept until something it depends on changes.
-    var colorGrading: ColorGradingSuggestion.Suggestion? {
-        let key = suggestionKey
-        if let cache = gradingCache, cache.key == key { return cache.grading }
-        let grading = computeColorGrading()
-        gradingCache = (key, grading)
-        return grading
-    }
-
-    @ObservationIgnored private var gradingCache: (key: Int, grading: ColorGradingSuggestion.Suggestion?)?
-    @ObservationIgnored private var predictionCache: (key: Int, settings: GradePreviewSettings?, plan: GradePreview.Plan?)?
-
-    /// Everything the suggestion depends on, as one number: the markers, the harmony and the aim.
-    private var suggestionKey: Int {
-        var hasher = Hasher()
-        for marker in markers {
-            hasher.combine(marker.color.hex)
-            hasher.combine(Int((marker.share * 10_000).rounded()))
-            hasher.combine(isProtected(marker))
-        }
-        hasher.combine(harmonyChoice?.rawValue)
-        hasher.combine(harmonyRotationOverride)
-        hasher.combine(hueSpace.rawValue)
-        hasher.combine(harmonySector.rawValue)
-        hasher.combine(gradingStrength.rawValue)
-        hasher.combine(gradingStyle.rawValue)
-        hasher.combine(gradingTarget.rawValue)
-        hasher.combine(isSeriesReferenceShown)
-        hasher.combine(referencePhoto?.url.path)
-        for color in seriesPalette { hasher.combine(color.color.hex) }
-        return hasher.finalize()
-    }
-
-    private func computeColorGrading() -> ColorGradingSuggestion.Suggestion? {
-        guard !markers.isEmpty else { return nil }
-        var inputs: [ColorGradingSuggestion.Input] = []
-        switch effectiveGradingTarget {
-        case .emphasize:
-            return ColorGradingSuggestion.emphasize(markers.map { ($0.color, $0.share) }, strength: gradingStrength)
-        case .harmony:
-            guard let fit = harmony else { return nil }
-            inputs = markers.map {
-                let hue = $0.color.hsb.h
-                return .init(color: $0.color, share: $0.share, targetHue: isProtected($0) ? hue : hue + fit.shift(for: hue))
-            }
-        case .series:
-            for marker in markers {
-                if marker.color.chroma < DxOMapping.neutralChroma {
-                    // Greys have no target, but the grading must not tint them.
-                    inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h))
-                } else if isProtected(marker) {
-                    inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h))
-                } else if let shift = seriesMatch(for: marker)?.hueShift {
-                    inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h + shift))
-                }
-            }
-        }
-        return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: gradingStyle)
-    }
-
-    /// Per channel of PhotoLab's HSL tool, how far its Hue handle should turn (degrees on PhotoLab's ring;
-    /// + = counter-clockwise), aimed like the Color Grading suggestion: at the harmony or at the reference
-    /// palette. Nothing when the grading only strengthens the existing tints: there is no target to turn toward.
-    var hslSuggestions: [HSLSuggestion.Channel] {
-        guard !markers.isEmpty else { return [] }
-        let aim = effectiveGradingTarget
-        let fit = harmony
-        return HSLSuggestion.channels(from: markers.enumerated().map { index, marker in
-            let target: Double? = switch aim {
-            case .harmony: fit?.shift(for: marker.color.hsb.h)
-            case .series: seriesMatch(for: marker)?.hueShift
-            case .emphasize: nil
-            }
-            let shift = isProtected(marker) ? nil : target
-            return HSLSuggestion.Input(number: index + 1, color: marker.color, share: marker.share, hueShift: shift)
-        })
-    }
-
-    // MARK: Preview of the suggestion
-
-    /// Shows the photo with the suggested Color Grading tints and HSL hue turns applied (right of the divider).
-    var showPreview = AnalysisModel.remembered("showPreview") ?? false {
-        didSet {
-            if showPreview != oldValue { remember(showPreview, as: "showPreview"); refreshPreview() }
-        }
-    }
-    /// How the preview is shown next to the original: right of a divider you can drag, or in a second photo below it.
-    enum PreviewLayout: String, CaseIterable, Identifiable {
-        case split = "Divider"
-        case stacked = "Below"
-        var id: String { rawValue }
-    }
-    var previewLayout = (AnalysisModel.remembered("previewLayout") as String?).flatMap(PreviewLayout.init(rawValue:)) ?? .split {
-        didSet { if previewLayout != oldValue { remember(previewLayout.rawValue, as: "previewLayout") } }
-    }
-    /// True when the preview is drawn as a second photo below the original.
-    var isStackedPreview: Bool { showPreview && previewImage != nil && afterImage == nil && previewLayout == .stacked }
-    /// 1 = as suggested; 2 and 4 exaggerate, because a suggestion of a few points is hard to see.
-    var previewAmount = AnalysisModel.remembered("previewAmount") ?? 1.0 {
-        didSet { if previewAmount != oldValue { remember(previewAmount, as: "previewAmount"); refreshPreview() } }
-    }
-    private(set) var previewImage: CGImage?
-    @ObservationIgnored private var previewTask: Task<Void, Never>?
-    @ObservationIgnored private var previewGeneration = 0
-
-    /// The suggestion as settings of the calibrated model, as suggested (amount 1), with the plan to apply them.
-    private func prediction() -> (settings: GradePreviewSettings, plan: GradePreview.Plan)? {
-        let key = suggestionKey
-        if let cache = predictionCache, cache.key == key {
-            guard let settings = cache.settings, let plan = cache.plan else { return nil }
-            return (settings, plan)
-        }
-        var result: (GradePreviewSettings, GradePreview.Plan)?
-        if let grading = colorGrading {
-            func tint(_ wheel: ColorGradingPreset.Wheel) -> GradePreviewSettings.Tint {
-                .init(dxoHue: Double(wheel.hue), saturation: Double(wheel.saturation), luminance: Double(wheel.luminance))
-            }
-            var settings = GradePreviewSettings(shadows: tint(grading.preset.shadows), midtones: tint(grading.preset.midtones),
-                                                highlights: tint(grading.preset.highlights), master: tint(grading.preset.master),
-                                                balance: Double(grading.preset.balance),
-                                                toneBlacks: Double(grading.toneBlacks), toneShadows: Double(grading.toneShadows))
-            for channel in hslSuggestions { settings.hueShifts[channel.channel] = channel.hueShift }
-            result = (settings, GradePreview.Plan(settings))
-        }
-        predictionCache = (key, result?.0, result?.1)
-        return result
-    }
-
-    /// What the preview image applies; nil while it is off or when there is nothing to suggest yet. Changes with the
-    /// markers, the harmony, the strength and the aim, and the preview follows.
-    var previewSettings: GradePreviewSettings? {
-        guard showPreview, var settings = prediction()?.settings else { return nil }
-        settings.amount = previewAmount
-        return settings
-    }
-
-    /// True while the preview is on and there is a suggestion: the colors "after" are then the predicted ones.
-    var isPreviewActive: Bool { showPreview && afterImage == nil && prediction() != nil }
-
-    /// A graded version is loaded, or the preview predicts one.
-    var hasAfterColors: Bool { afterImage != nil || isPreviewActive }
-
-    /// "After" for a graded version, "Predicted" for the preview.
-    var afterLabel: String { afterImage == nil ? "Predicted" : "After" }
-
-    /// The color a marker gets from the suggestion, as the calibrated model predicts PhotoLab will render it.
-    private func predictedColor(for marker: Marker) -> SRGBColor? {
-        guard showPreview, let plan = prediction()?.plan else { return nil }
-        let linear = marker.color.linear
-        return SRGBColor(linear: plan.applyLinear(linear: linear, lab: ColorMath.linearToOKLab(linear))).clamped
-    }
-
-    func togglePreview() {
-        guard afterImage == nil else { return }
-        showPreview.toggle()
-    }
-
-    /// Renders the preview in the background; a newer request replaces an older one.
-    func refreshPreview() {
-        previewTask?.cancel()
-        guard showPreview, afterImage == nil, let image, let settings = previewSettings else {
-            previewImage = nil
-            return
-        }
-        previewGeneration += 1
-        let generation = previewGeneration
-        let source = image.display
-        previewTask = Task {
-            // Dragging a marker changes the settings all the time: render once it rests.
-            try? await Task.sleep(for: .milliseconds(150))
-            guard !Task.isCancelled else { return }
-            let rendered = await Task.detached(priority: .userInitiated) {
-                GradePreview.render(source, settings: settings)
-            }.value
-            guard generation == previewGeneration else { return }
-            previewImage = rendered
-        }
-    }
-
-    // MARK: Reference palette (a series or a single reference photo)
-
-    /// A photo with a look worth copying. Its palette is used like the series palette: diamonds on the wheel,
-    /// a match per color in the list and an aim for the Color Grading suggestion.
-    struct ReferencePhoto {
-        var url: URL
-        var palette: [SharedColor]
-        var name: String { url.lastPathComponent }
-    }
-
-    /// Overrides the series palette while it is set. Stays when another photo is opened, so one reference can
-    /// serve a whole batch; it is not part of the saved session.
-    private(set) var referencePhoto: ReferencePhoto?
-
-    /// "Reference" or "Series": what the palette on the wheel comes from.
-    var referenceTitle: String { referencePhoto == nil ? "Series" : "Reference" }
-    var referenceNoun: String { referencePhoto == nil ? "series" : "reference" }
-
-    func presentOpenReferencePanel() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
-        panel.allowsMultipleSelection = false
-        panel.message = "Choose a photo whose colors you want to match"
-        if panel.runModal() == .OK, let url = panel.url { openReference(url) }
-    }
-
-    /// Analyzes `url` and uses its dominant colors as the reference palette (as many colors as the current setting).
-    @discardableResult
-    func openReference(_ url: URL) -> Task<Void, Never> {
-        let count = colorCount
-        return Task {
-            do {
-                let palette = try await Task.detached(priority: .userInitiated) { () -> [SharedColor] in
-                    let loaded = try ImageLoader.load(url: url)
-                    let colors = DominantColorAnalyzer.analyze(loaded.analysis, count: count, weights: nil)
-                        .map { SeriesColor(centroid: $0.centroid, share: $0.share) }
-                    return SeriesAnalyzer.sharedPalette(from: [colors], size: count)
-                }.value
-                referencePhoto = ReferencePhoto(url: url, palette: palette)
-                showSeriesReference = true
-                isDirty = true
-                showNotice("Reference: \(url.lastPathComponent)")
-            } catch {
-                errorMessage = "Could not open the reference photo: \(error.localizedDescription)"
-            }
-        }
-    }
-
-    func clearReference() {
-        guard referencePhoto != nil else { return }
-        referencePhoto = nil
-        isDirty = true
-        showNotice("Removed the reference photo")
-    }
-
-    // MARK: Series reference
-
-    var seriesPalette: [SharedColor] { referencePhoto?.palette ?? series?.palette ?? [] }
-
-    /// True when there is a series palette and the reference is switched on.
-    var isSeriesReferenceShown: Bool { showSeriesReference && !seriesPalette.isEmpty }
-
-    /// Series photos share a scene or a look, so colors must be close to match; a reference photo is another scene.
-    private var referenceThreshold: Float {
-        referencePhoto == nil ? SeriesAnalyzer.matchThreshold : SeriesAnalyzer.referenceMatchThreshold
-    }
-
-    func seriesMatch(for marker: Marker) -> SeriesMatch? {
-        isSeriesReferenceShown ? SeriesAnalyzer.match(marker.color.oklab, against: seriesPalette, threshold: referenceThreshold) : nil
-    }
-
-    func seriesInfo(for marker: Marker) -> SeriesRowInfo? {
-        guard isSeriesReferenceShown else { return nil }
-        guard let match = seriesMatch(for: marker) else { return .unmatched }
-        return .match(match, paletteHex: seriesPalette[match.index].color.hex)
-    }
-
-    /// How well the photo's colors fit the series palette, with a starting point for aligning it.
-    var seriesFit: PhotoConsistency? {
-        guard isSeriesReferenceShown, !markers.isEmpty else { return nil }
-        return SeriesAnalyzer.consistency(of: markers.map { SeriesColor(centroid: $0.color.oklab, share: max($0.share, 1e-4)) },
-                                          against: seriesPalette, threshold: referenceThreshold)
-    }
-
-    /// The same for the graded version: its colors at the marker positions, weighted by the original shares.
-    var afterSeriesFit: PhotoConsistency? {
-        guard hasAfterColors, isSeriesReferenceShown, !markers.isEmpty else { return nil }
-        return SeriesAnalyzer.consistency(
-            of: markers.map { SeriesColor(centroid: (afterColor(for: $0) ?? $0.color).oklab, share: max($0.share, 1e-4)) },
-            against: seriesPalette, threshold: referenceThreshold)
-    }
-
-    // MARK: White balance
-
-    /// Color cast of the nearly neutral parts of the whole photo (not subject-weighted: a cast is a property of the light).
-    var whiteBalance: WhiteBalanceCheck {
-        guard let image else { return WhiteBalanceCheck(neutralShare: 0, cast: 0, a: 0, b: 0) }
-        let key = "\(image.url.path)|\(image.analysis.width)x\(image.analysis.height)"
-        if let cache = whiteBalanceCache, cache.key == key { return cache.check }
-        let check = WhiteBalanceCheck.check(image.analysis)
-        whiteBalanceCache = (key, check)
-        return check
-    }
-    @ObservationIgnored private var whiteBalanceCache: (key: String, check: WhiteBalanceCheck)?
-
-    // MARK: Harmony
-
-    private var harmonyInputs: [HarmonyInput] {
-        markers.map {
-            HarmonyInput(hue: $0.color.hsb.h, weight: DxOMapping.harmonyWeight(color: $0.color, share: $0.share))
-        }
-    }
-
-    var harmony: HarmonyFit? {
-        let inputs = harmonyInputs
-        let tolerance = harmonySector.tolerance
-        let kind = harmonyChoice ?? HarmonyDetector.detect(inputs, space: hueSpace, tolerance: tolerance)?.kind
-        guard let kind else { return nil }
-        if let rotation = harmonyRotationOverride {
-            return HarmonyDetector.evaluate(kind, rotation: rotation, inputs: inputs, space: hueSpace, tolerance: tolerance)
-                ?? HarmonyFit(kind: kind, rotation: rotation, deviation: 0, space: hueSpace, tolerance: tolerance)
-        }
-        return HarmonyDetector.fit(kind, to: inputs, space: hueSpace, tolerance: tolerance)
-            ?? HarmonyFit(kind: kind, rotation: 0, deviation: 0, space: hueSpace, tolerance: tolerance)
-    }
-
-    /// How well the graded version matches the same harmony targets as the original.
-    var afterHarmony: HarmonyFit? {
-        guard hasAfterColors, let fit = harmony else { return nil }
-        let inputs = markers.compactMap { marker in
-            afterColor(for: marker).map {
-                HarmonyInput(hue: $0.hsb.h, weight: DxOMapping.harmonyWeight(color: $0, share: marker.share))
-            }
-        }
-        return HarmonyDetector.evaluate(fit.kind, rotation: fit.rotation, inputs: inputs, space: fit.space, tolerance: fit.tolerance)
-    }
 }
