@@ -1972,3 +1972,40 @@ import Testing
         #expect(ColorGradingSuggestion.optimized(from: greys, strength: .strong).preset == ColorGradingPreset())
     }
 }
+
+
+@Suite struct WhiteBalanceTests {
+    /// A grey ramp with an optional linear-light tint, plus some strongly colored pixels that must not count.
+    static func buffer(tint: SIMD3<Float> = .zero, neutralPixels: Int = 400) -> PixelBuffer {
+        var linear: [SIMD3<Float>] = []
+        for i in 0..<neutralPixels {
+            let v = 0.1 + 0.6 * Float(i) / Float(max(1, neutralPixels - 1))
+            linear.append(SIMD3(v, v, v) + tint * v)
+        }
+        for _ in 0..<100 { linear.append(SIMD3(0.9, 0.1, 0.1)) }   // saturated red: not neutral
+        return PixelBuffer(width: linear.count, height: 1, linear: linear)
+    }
+
+    @Test func greyIsNeutral() {
+        let check = WhiteBalanceCheck.check(Self.buffer())
+        #expect(check.verdict == .neutral && check.direction == nil && check.advice == nil)
+        #expect(abs(check.neutralShare - 0.8) < 0.01)
+    }
+
+    @Test func warmCastIsNamedAndAdviceIsTheOpposite() {
+        let check = WhiteBalanceCheck.check(Self.buffer(tint: SIMD3(0.15, 0.05, -0.10)))
+        #expect(check.verdict != .neutral && check.b > 0)
+        #expect(check.direction?.contains("warm") == true)
+        #expect(check.advice?.contains("cooler") == true)
+    }
+
+    @Test func coolCastGetsAWarmerTemperature() {
+        let check = WhiteBalanceCheck.check(Self.buffer(tint: SIMD3(-0.12, -0.02, 0.17)))
+        #expect(check.direction?.contains("cool") == true && check.advice?.contains("warmer") == true)
+    }
+
+    @Test func tooFewNeutralPixelsSaysNothing() {
+        let check = WhiteBalanceCheck.check(Self.buffer(neutralPixels: 2))
+        #expect(check.verdict == .unknown && check.direction == nil)
+    }
+}

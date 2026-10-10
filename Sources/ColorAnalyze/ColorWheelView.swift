@@ -428,6 +428,26 @@ struct ColorWheelView: View {
         }
     }
 
+    /// A hint when the nearly neutral parts of the photo lean to a color: grading comes after white balance.
+    @ViewBuilder
+    private func whiteBalanceNote() -> some View {
+        let check = model.whiteBalance
+        if let direction = check.direction, let advice = check.advice {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(check.verdict == .clear ? .red : .orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(check.verdict == .clear ? "Clear" : "Slight") \(direction) cast in the neutral areas (\(Int((check.neutralShare * 100).rounded())) % of the photo).")
+                    Text("If they should be neutral, correct white balance first: \(advice). Then analyze again.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .font(.caption)
+            .fixedSize(horizontal: false, vertical: true)
+            .help("Measured on the nearly neutral pixels (OKLab chroma below 0.035). A white wall at sunset is orange for a reason: this is a hint, not a verdict.")
+        }
+    }
+
     /// The suggested DxO Color Grading preset, per tonal range, with the export button.
     @ViewBuilder
     private func gradingSection() -> some View {
@@ -446,6 +466,7 @@ struct ColorWheelView: View {
                 .frame(width: 104)
                 .help("How strongly the tints are applied")
             }
+            whiteBalanceNote()
             Picker("Style", selection: $model.gradingStyle) {
                 ForEach(GradingStyle.allCases) { Text($0.displayName).tag($0) }
             }

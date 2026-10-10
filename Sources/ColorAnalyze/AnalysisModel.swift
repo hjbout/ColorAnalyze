@@ -646,6 +646,7 @@ final class AnalysisModel {
             weighting: isWeighted ? weighting.rawValue : nil,
             intention: intention,
             harmony: fit.map { .init(fit: $0, autoDetected: harmonyChoice == nil, fitAfter: afterImage == nil ? nil : afterHarmony) },
+            whiteBalance: whiteBalance.verdict == .unknown ? nil : .init(whiteBalance),
             colors: records
         )
     }
@@ -1182,6 +1183,19 @@ final class AnalysisModel {
             of: markers.map { SeriesColor(centroid: (afterColor(for: $0) ?? $0.color).oklab, share: max($0.share, 1e-4)) },
             against: seriesPalette, threshold: referenceThreshold)
     }
+
+    // MARK: White balance
+
+    /// Color cast of the nearly neutral parts of the whole photo (not subject-weighted: a cast is a property of the light).
+    var whiteBalance: WhiteBalanceCheck {
+        guard let image else { return WhiteBalanceCheck(neutralShare: 0, cast: 0, a: 0, b: 0) }
+        let key = "\(image.url.path)|\(image.analysis.width)x\(image.analysis.height)"
+        if let cache = whiteBalanceCache, cache.key == key { return cache.check }
+        let check = WhiteBalanceCheck.check(image.analysis)
+        whiteBalanceCache = (key, check)
+        return check
+    }
+    @ObservationIgnored private var whiteBalanceCache: (key: String, check: WhiteBalanceCheck)?
 
     // MARK: Harmony
 

@@ -58,6 +58,8 @@ Wil je de preset niet gebruiken, of zelf bepalen wat je overneemt? Voer de voors
 
 **Voorbereiding**
 
+0. Staat er in het vak *DxO Color Grading* een waarschuwing over een kleurzweem in de neutrale delen? Corrigeer dan eerst de witbalans in PhotoLab (de waarschuwing zegt in welke richting) en analyseer opnieuw. Op een bewust gekleurde scène, zoals een zonsondergang, mag je haar negeren.
+
 1. Doe eerst de basiscorrecties in PhotoLab: **witbalans, belichting en contrast**. Een witbalansverschuiving verschuift alle kleuren, dus analyseer en grade pas daarna. (Analyseer bij voorkeur een kleine export uit PhotoLab, bijvoorbeeld 2000 px, en niet de RAW zelf.)
 2. Houd het ColorAnalyze-venster open naast PhotoLab. Alles wat je nodig hebt staat in het vak **DxO Color Grading** (onder het wiel) en in de kleurenlijst (rechts).
 

@@ -140,16 +140,36 @@ public struct ColorExport: Codable, Sendable, Equatable {
     /// What the photo should feel like, as noted before choosing a harmony; nil when empty.
     public var intention: String?
     public var harmony: Harmony?
+    /// Color cast of the nearly neutral parts of the photo; nil when it could not be judged.
+    public var whiteBalance: WhiteBalance?
     public var colors: [ColorRecord]
 
+    public struct WhiteBalance: Codable, Sendable, Equatable {
+        public var verdict: String
+        /// Mean OKLab chroma of the nearly neutral pixels (0 = neutral).
+        public var cast: Double
+        public var neutralSharePercent: Double
+        public var direction: String?
+        public var advice: String?
+
+        public init(_ check: WhiteBalanceCheck) {
+            verdict = check.verdict.rawValue
+            cast = (check.cast * 10_000).rounded() / 10_000
+            neutralSharePercent = (check.neutralShare * 1000).rounded() / 10
+            direction = check.direction
+            advice = check.advice
+        }
+    }
+
     public init(photo: String, graded: String? = nil, exportedAt: Date = Date(), weighting: String? = nil,
-                intention: String? = nil, harmony: Harmony? = nil, colors: [ColorRecord]) {
+                intention: String? = nil, harmony: Harmony? = nil, whiteBalance: WhiteBalance? = nil, colors: [ColorRecord]) {
         self.photo = photo
         self.graded = graded
         self.exportedAt = exportedAt
         self.weighting = weighting
         self.intention = Intention.cleaned(intention)
         self.harmony = harmony
+        self.whiteBalance = whiteBalance
         self.colors = colors
     }
 
