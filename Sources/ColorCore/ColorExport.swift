@@ -116,6 +116,8 @@ public struct ColorExport: Codable, Sendable, Equatable {
         public var rotation: Double
         /// Target hues as sRGB hues (degrees), whichever wheel was used.
         public var targetHues: [Double]
+        /// Half-width of the sector around each target in degrees on the wheel of `hueSpace`; 0 = the exact hue.
+        public var sectorDegrees: Double
         /// Weighted RMS hue distance of the colors to their targets, in degrees.
         public var fit: Double
         /// Same measure for the graded version.
@@ -127,6 +129,7 @@ public struct ColorExport: Codable, Sendable, Equatable {
             hueSpace = fit.space.rawValue
             rotation = fit.rotation
             targetHues = fit.targetRGBHues.map { ($0 * 10).rounded() / 10 }
+            sectorDegrees = fit.tolerance
             self.fit = (fit.deviation * 10).rounded() / 10
             self.fitAfter = fitAfter.map { ($0.deviation * 10).rounded() / 10 }
         }

@@ -647,6 +647,9 @@ import Testing
         let fit = HarmonyFit(kind: .complementary, rotation: 0, deviation: 3, space: .ryb)
         let h = ColorExport.Harmony(fit: fit, autoDetected: false, fitAfter: nil)
         #expect(h.hueSpace == "ryb" && h.targetHues == [0, 120])
+        #expect(h.sectorDegrees == 0)
+        let sector = HarmonyFit(kind: .complementary, rotation: 0, deviation: 3, space: .rgb, tolerance: 10)
+        #expect(ColorExport.Harmony(fit: sector, autoDetected: true, fitAfter: nil).sectorDegrees == 10)
         let session = Session(photo: "a.jpg", colorCount: 6, markers: [], hueSpace: "ryb")
         #expect(session.hueSpace == "ryb")
     }

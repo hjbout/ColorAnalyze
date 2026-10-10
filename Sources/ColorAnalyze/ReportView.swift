@@ -137,7 +137,8 @@ struct ReportView: View {
                         }
                         .font(.system(size: 14, weight: .medium).monospacedDigit())
                     }
-                    Text("Target hues (RGB) " + fit.targetRGBHues.map { "\(Int($0.rounded()))°" }.joined(separator: " · "))
+                    Text("Target hues (RGB) " + fit.targetRGBHues.map { "\(Int($0.rounded()))°" }.joined(separator: " · ")
+                         + (fit.tolerance > 0 ? " · sector ±\(Int(fit.tolerance.rounded()))°" : " · exact hue"))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }

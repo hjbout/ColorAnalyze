@@ -315,7 +315,8 @@ struct ColorWheelView: View {
                     }
                 }
                 HStack {
-                    Text("Target hues (RGB): " + fit.targetRGBHues.map { String(format: "%.0f°", $0) }.joined(separator: " · "))
+                    Text("Target hues (RGB): " + fit.targetRGBHues.map { String(format: "%.0f°", $0) }.joined(separator: " · ")
+                         + (fit.tolerance > 0 ? String(format: " · sector ±%.0f°", fit.tolerance) : " · exact hue"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
