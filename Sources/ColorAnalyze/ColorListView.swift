@@ -11,13 +11,13 @@ struct ColorListView: View {
         List(selection: $model.selectedMarkerID) {
             Section {
                 ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
-                    ColorRow(number: index + 1, marker: marker, harmony: fit,
+                    ColorRow(number: index + 1, marker: marker, protectionNote: model.protectionNote(for: marker), harmony: fit,
                              after: model.afterColor(for: marker), series: model.seriesInfo(for: marker), referenceTitle: model.referenceTitle, afterLabel: model.afterLabel)
                         .tag(marker.id)
                         .onHover { model.hover(marker.id, inside: $0) }
                         .contextMenu {
                             Button("Copy Hex") { copy(marker.color.hex) }
-                            Button(marker.isProtected ? "Unprotect Color" : "Protect Color (keep its hue)") { model.toggleProtected(marker.id) }
+                            Button(model.isProtected(marker) ? "Unprotect Color" : "Protect Color (keep its hue)") { model.toggleProtected(marker.id) }
                             Button("Remove Marker") { model.removeMarker(marker.id) }
                         }
                 }
@@ -50,6 +50,8 @@ struct ColorListView: View {
 private struct ColorRow: View {
     let number: Int
     let marker: Marker
+    /// Set when the suggestions leave this color's hue alone.
+    let protectionNote: String?
     let harmony: HarmonyFit?
     /// Color at the marker's position in the graded version, if one is loaded.
     let after: SRGBColor?
@@ -129,10 +131,10 @@ private struct ColorRow: View {
                         Text("In range · \(SkinTone.describe(offset: offset))")
                     }
                 }
-                if marker.isProtected {
+                if let protectionNote {
                     GridRow {
                         Text("Protected").foregroundStyle(.secondary)
-                        Text("Kept as it is: the suggestions do not aim it at the harmony")
+                        Text(protectionNote)
                             .foregroundStyle(.orange)
                     }
                 } else if let harmony, channel != .neutral {

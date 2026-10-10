@@ -60,6 +60,7 @@ struct ColorAnalyzeApp: App {
                 Toggle("Show Subject Map", isOn: Bindable(delegate.model).showSaliency)
                     .keyboardShortcut("m", modifiers: [])
                 Toggle("Show Skin Tone Line", isOn: Bindable(delegate.model).showSkinTone)
+                Toggle("Protect Skin Tones", isOn: Bindable(delegate.model).protectSkin)
                 Toggle("Show Series Palette", isOn: Bindable(delegate.model).showSeriesReference)
                 Picker("Color Wheel", selection: Bindable(delegate.model).hueSpace) {
                     ForEach(HueSpace.allCases) { Text($0.displayName).tag($0) }
@@ -143,7 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //     [--export-colors list.csv|list.json] [--export-colors-excel list.csv]
         //     [--weighting off|moderate|strong] [--wheel rgb|ryb|dxo|oklch] [--intention "warm, calm"]
         //     [--export-dxo-preset grading.preset] [--grading-strength subtle|moderate|strong] [--grading-style neutral|warm-highlights|cool-highlights|teal-orange|warm-overall|cool-overall|faded]
-        //     [--grading-target harmony|series|reference] [--protect 2,5] [--harmony-sector exact|narrow|wide]`
+        //     [--grading-target harmony|series|reference] [--protect 2,5] [--harmony-sector exact|narrow|wide] [--protect-skin on|off]`
         // `ColorAnalyze --series a.jpg b.jpg … [--series-colors N] [--palette-size N]
         //     [--export-series palette.csv|series.json] [--export-series-photos photos.csv]
         //     [--export-series-report overview.png]`
@@ -161,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var photoColors: Int?
         var protectedNumbers: [Int] = []
         var sector: HarmonySector?
+        var protectSkin: Bool?
         var problems: [String] = []
         /// Parses an enum-like option value; a wrong one is reported instead of silently ignored.
         func choice<T>(_ option: String, _ parse: (String) -> T?) -> T? {
@@ -193,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let numbers = text.split(separator: ",").compactMap { Int($0) }
                     return numbers.count == text.split(separator: ",").count ? numbers : nil
                 } ?? []
+            case "--protect-skin": protectSkin = choice(arg) { ["on": true, "off": false][$0.lowercased()] }
             case "--harmony-sector": sector = choice(arg) { HarmonySector(rawValue: $0.lowercased()) }
             case "--colors": photoColors = choice(arg) { Int($0).flatMap { (3...12).contains($0) ? $0 : nil } }
             case "--weighting": weighting = choice(arg) { Weighting(rawValue: $0.lowercased()) }
@@ -243,6 +246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.colorCount = 6
                 model.hueSpace = .rgb
                 model.harmonySector = .narrow
+                model.protectSkin = true
                 model.weighting = .off
                 model.gradingStyle = .neutral
                 model.showPreview = false
@@ -257,6 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let photoColors { model.withoutRemembering { model.colorCount = photoColors } }
         if let sector { model.withoutRemembering { model.harmonySector = sector } }
+        if let protectSkin { model.withoutRemembering { model.protectSkin = protectSkin } }
         let openedPhoto = photo.flatMap { exists($0) ? $0 : nil }
         if let openedPhoto {
             tasks.append(model.open(URL(fileURLWithPath: openedPhoto),
@@ -298,7 +303,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 series.intention = intention
             }
             for _ in 0..<addMissing { await model.suggestMarker().value }
-            for number in protectedNumbers where model.markers.indices.contains(number - 1) && !model.markers[number - 1].isProtected {
+            for number in protectedNumbers where model.markers.indices.contains(number - 1) && !model.isProtected(model.markers[number - 1]) {
                 model.toggleProtected(model.markers[number - 1].id)
             }
             if let gradingStrength { model.useGradingStrength(gradingStrength) }

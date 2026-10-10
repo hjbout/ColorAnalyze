@@ -238,6 +238,10 @@ struct ColorWheelView: View {
                 .toggleStyle(.checkbox)
                 .controlSize(.small)
                 .help("Reference band for skin tones (sRGB hue ≈ 13°–37°). Skin-like colors in the list are marked whether or not the line is shown.")
+            Toggle("Protect skin tones", isOn: $model.protectSkin)
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+                .help("Skin-like colors keep their hue: the grading suggestions do not aim them at the harmony. Right-click a color to override this for one color. Sand, wood or a red wall can look like skin to this rule of thumb.")
             HStack(spacing: 8) {
                 if !model.seriesPalette.isEmpty {
                     Toggle("\(model.referenceTitle) palette", isOn: $model.showSeriesReference)

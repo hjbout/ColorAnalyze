@@ -12,8 +12,9 @@ struct Marker: Identifiable, Equatable {
     var share: Double = 0
     /// Plain pixel share, without weighting.
     var areaShare: Double = 0
-    /// A color to leave as it is: the grading suggestions aim it at its own hue instead of at the harmony.
-    var isProtected = false
+    /// Set by hand: true = leave this color as it is (the grading suggestions aim it at its own hue instead of at the
+    /// harmony), false = never protect it; nil = decided automatically (skin tones, when that is switched on).
+    var protection: Bool?
 }
 
 /// How much more the subject of the photo counts than the background.
@@ -510,7 +511,7 @@ final class AnalysisModel {
             graded: afterImage?.url.path,
             colorCount: colorCount,
             weighting: weighting == .off ? nil : weighting.rawValue,
-            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex, isProtected: $0.isProtected ? true : nil) },
+            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex, isProtected: $0.protection) },
             harmony: harmonyChoice?.rawValue,
             harmonyRotation: harmonyRotationOverride,
             hueSpace: hueSpace == .rgb ? nil : hueSpace.rawValue,
@@ -561,7 +562,7 @@ final class AnalysisModel {
         markers = session.markers.map { saved in
             let location = CGPoint(x: min(1, max(0, saved.x)), y: min(1, max(0, saved.y)))
             var marker = Marker(location: location, color: sample(at: location))
-            marker.isProtected = saved.isProtected ?? false
+            marker.protection = saved.isProtected
             return marker
         }
         selectedMarkerID = nil
@@ -820,10 +821,35 @@ final class AnalysisModel {
     /// Protects a color (or lifts the protection): the suggestions then leave its hue where it is.
     func toggleProtected(_ id: Marker.ID) {
         guard let i = markers.firstIndex(where: { $0.id == id }) else { return }
-        registerMarkerUndo(markers[i].isProtected ? "Unprotect Color" : "Protect Color")
-        markers[i].isProtected.toggle()
+        let protect = !isProtected(markers[i])
+        registerMarkerUndo(protect ? "Protect Color" : "Unprotect Color")
+        // Back to automatic when the choice is what automatic would do anyway.
+        markers[i].protection = protect == isAutomaticallyProtected(markers[i]) ? nil : protect
         isDirty = true
         refreshPreview()
+    }
+
+    /// Skin-like colors are protected by themselves when this is on, unless protection was set by hand. Remembered.
+    var protectSkin = AnalysisModel.remembered("protectSkin") ?? true {
+        didSet {
+            if protectSkin != oldValue { remember(protectSkin, as: "protectSkin"); isDirty = true; refreshPreview() }
+        }
+    }
+
+    private func isAutomaticallyProtected(_ marker: Marker) -> Bool {
+        protectSkin && SkinTone.offset(of: marker.color) != nil
+    }
+
+    /// True when the suggestions leave this color's hue alone: protected by hand, or a skin tone with automatic protection on.
+    func isProtected(_ marker: Marker) -> Bool {
+        marker.protection ?? isAutomaticallyProtected(marker)
+    }
+
+    /// Why a color is protected, for the list; nil when it is not.
+    func protectionNote(for marker: Marker) -> String? {
+        guard isProtected(marker) else { return nil }
+        if marker.protection == true { return "Kept as it is: the suggestions do not aim it at the harmony" }
+        return "Skin tone, kept as it is: the suggestions do not aim it at the harmony"
     }
 
     func number(of id: Marker.ID) -> Int {
@@ -931,7 +957,7 @@ final class AnalysisModel {
         for marker in markers {
             hasher.combine(marker.color.hex)
             hasher.combine(Int((marker.share * 10_000).rounded()))
-            hasher.combine(marker.isProtected)
+            hasher.combine(isProtected(marker))
         }
         hasher.combine(harmonyChoice?.rawValue)
         hasher.combine(harmonyRotationOverride)
@@ -956,14 +982,14 @@ final class AnalysisModel {
             guard let fit = harmony else { return nil }
             inputs = markers.map {
                 let hue = $0.color.hsb.h
-                return .init(color: $0.color, share: $0.share, targetHue: $0.isProtected ? hue : hue + fit.shift(for: hue))
+                return .init(color: $0.color, share: $0.share, targetHue: isProtected($0) ? hue : hue + fit.shift(for: hue))
             }
         case .series:
             for marker in markers {
                 if marker.color.chroma < DxOMapping.neutralChroma {
                     // Greys have no target, but the grading must not tint them.
                     inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h))
-                } else if marker.isProtected {
+                } else if isProtected(marker) {
                     inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h))
                 } else if let shift = seriesMatch(for: marker)?.hueShift {
                     inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h + shift))
@@ -986,7 +1012,7 @@ final class AnalysisModel {
             case .series: seriesMatch(for: marker)?.hueShift
             case .emphasize: nil
             }
-            let shift = marker.isProtected ? nil : target
+            let shift = isProtected(marker) ? nil : target
             return HSLSuggestion.Input(number: index + 1, color: marker.color, share: marker.share, hueShift: shift)
         })
     }

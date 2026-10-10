@@ -43,7 +43,7 @@ struct PhotoMarkerView: View {
                             // The region still shows while a marker is selected or dragged.
                             .gesture(dragGesture(for: marker, in: rect))
                             .contextMenu {
-                                Button(marker.isProtected ? "Unprotect Color \(index + 1)" : "Protect Color \(index + 1) (keep its hue)") { model.toggleProtected(marker.id) }
+                                Button(model.isProtected(marker) ? "Unprotect Color \(index + 1)" : "Protect Color \(index + 1) (keep its hue)") { model.toggleProtected(marker.id) }
                                 Button("Remove Marker \(index + 1)") { model.removeMarker(marker.id) }
                             }
                             .help("Drag to sample another part of the photo")

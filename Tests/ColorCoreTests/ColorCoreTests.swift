@@ -179,6 +179,9 @@ import Testing
         let encoder = JSONEncoder()
         let decoded = try JSONDecoder().decode(Session.self, from: encoder.encode(session))
         #expect(decoded.markers.map(\.isProtected) == [nil, true])
+        session.markers[0].isProtected = false   // "never protect", set by hand, is kept apart from "automatic"
+        let again = try JSONDecoder().decode(Session.self, from: encoder.encode(session))
+        #expect(again.markers.map(\.isProtected) == [false, true])
         let old = ##"{"x":0.1,"y":0.2,"hex":"#000000"}"##
         #expect(try JSONDecoder().decode(Session.Marker.self, from: Data(old.utf8)).isProtected == nil)
     }
