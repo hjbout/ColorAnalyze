@@ -17,6 +17,8 @@ public enum DominantColorAnalyzer {
     public static let windowFraction = 0.06
     /// Patches scoring at least this fraction of the best one count as equally good.
     public static let nearBestFraction = 0.97
+    /// Independent k-means runs per analysis; the tightest one is kept.
+    public static let restarts = 5
 
     /// Finds up to `count` dominant colors, sorted by share (largest first).
     /// `weights` (one per pixel, e.g. 1 + strength × saliency) make the subject count
@@ -27,7 +29,7 @@ public enum DominantColorAnalyzer {
 
         // Over-cluster, then merge near-duplicates so a large gradient (sky) does not
         // take several slots at the expense of a small accent color.
-        let km = KMeans.cluster(buffer.lab, weights: weights, k: min(count * 2, n))
+        let km = KMeans.clusterBest(buffer.lab, weights: weights, k: min(count * 2, n), restarts: restarts)
         let totalMass = km.mass.reduce(0, +)
         let merged = mergeClose(centroids: km.centroids, mass: km.mass, threshold: mergeThreshold)
         let centroids = merged.centroids, mass = merged.mass

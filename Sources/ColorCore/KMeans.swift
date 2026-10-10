@@ -23,9 +23,24 @@ public struct KMeansResult: Sendable {
     public var counts: [Int]
     /// Summed weight per cluster (equals `counts` for unweighted input).
     public var mass: [Double]
+    /// Weighted sum of squared distances of the points to their centroid: the lower, the tighter the clustering.
+    public var inertia: Double = 0
 }
 
 public enum KMeans {
+    /// The best of `restarts` runs of `cluster` (lowest inertia). k-means++ is random and a run can settle in a poor local
+    /// optimum, e.g. one cluster for two small accents and two for a sky; the seeds are fixed, so the result is repeatable.
+    public static func clusterBest(_ points: [SIMD3<Float>], weights: [Float]? = nil, k: Int, restarts: Int,
+                                   maxIterations: Int = 20, seed: UInt64 = 0x00C0_10C0) -> KMeansResult {
+        var best = cluster(points, weights: weights, k: k, maxIterations: maxIterations, seed: seed)
+        for run in 1..<max(1, restarts) {
+            let candidate = cluster(points, weights: weights, k: k, maxIterations: maxIterations,
+                                    seed: seed &+ UInt64(run) &* 0x9E37_79B9_7F4A_7C15)
+            if candidate.inertia < best.inertia { best = candidate }
+        }
+        return best
+    }
+
     /// k-means++ clustering. Empty clusters are dropped from the result.
     /// `weights` (one per point, > 0) make some points count more, both when picking
     /// the starting colors and when averaging a cluster.
@@ -63,20 +78,22 @@ public enum KMeans {
 
         var counts = [Int](repeating: 0, count: centroids.count)
         var mass = [Double](repeating: 0, count: centroids.count)
+        var inertia = 0.0
         for (i, a) in assignments.enumerated() {
             counts[a] += 1
             mass[a] += Double(w[i])
+            inertia += Double(w[i] * ColorMath.distanceSquared(points[i], centroids[a]))
         }
         let kept = centroids.indices.filter { counts[$0] > 0 }
         if kept.count == centroids.count {
-            return KMeansResult(centroids: centroids, assignments: assignments, counts: counts, mass: mass)
+            return KMeansResult(centroids: centroids, assignments: assignments, counts: counts, mass: mass, inertia: inertia)
         }
         var remap = [Int](repeating: -1, count: centroids.count)
         for (newIndex, old) in kept.enumerated() { remap[old] = newIndex }
         return KMeansResult(centroids: kept.map { centroids[$0] },
                             assignments: assignments.map { remap[$0] },
                             counts: kept.map { counts[$0] },
-                            mass: kept.map { mass[$0] })
+                            mass: kept.map { mass[$0] }, inertia: inertia)
     }
 
     public static func nearest(_ p: SIMD3<Float>, in centroids: [SIMD3<Float>]) -> Int {

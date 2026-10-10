@@ -2012,3 +2012,33 @@ import Testing
         #expect(check.verdict == .unknown && check.direction == nil)
     }
 }
+
+
+@Suite struct KMeansRestartTests {
+    static func points() -> [SIMD3<Float>] {
+        var rng = SplitMix64(seed: 7)
+        var points: [SIMD3<Float>] = []
+        // Three tight blobs of very different size, so a poor start can merge the small ones.
+        for (center, n) in [(SIMD3<Float>(0.2, 0, 0), 3000), (SIMD3<Float>(0.7, 0.1, 0.1), 40), (SIMD3<Float>(0.72, 0.12, 0.08), 40), (SIMD3<Float>(0.5, -0.1, 0.1), 300)] {
+            for _ in 0..<n {
+                points.append(center + SIMD3(Float.random(in: -0.01...0.01, using: &rng), Float.random(in: -0.01...0.01, using: &rng),
+                                             Float.random(in: -0.01...0.01, using: &rng)))
+            }
+        }
+        return points
+    }
+
+    @Test func theBestRunIsNeverWorseThanTheFirstAndIsRepeatable() {
+        let points = Self.points()
+        let single = KMeans.cluster(points, k: 4)
+        let best = KMeans.clusterBest(points, k: 4, restarts: 6)
+        #expect(best.inertia <= single.inertia)
+        #expect(best.inertia > 0)
+        #expect(KMeans.clusterBest(points, k: 4, restarts: 6).centroids == best.centroids)
+    }
+
+    @Test func oneRestartIsThePlainRun() {
+        let points = Self.points()
+        #expect(KMeans.clusterBest(points, k: 4, restarts: 1).centroids == KMeans.cluster(points, k: 4).centroids)
+    }
+}

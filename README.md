@@ -264,7 +264,7 @@ open build/ColorAnalyze.app
 ## How the analysis works
 
 1. Photo is decoded with EXIF orientation and converted to sRGB; a 256 px copy is used for clustering, a 1024 px copy for sampling.
-2. k-means++ in OKLab with 2× the requested count, near-duplicates (ΔE_OK < 0.05) merged, largest *n* kept.
+2. k-means++ in OKLab with 2× the requested count, run 5 times from fixed seeds with the tightest result (lowest summed squared distance) kept, so a poor start cannot merge two small accents, near-duplicates (ΔE_OK < 0.05) merged, largest *n* kept.
 3. Each marker goes to the center of the largest homogeneous patch of its cluster; its color is the average in a small disc there.
 4. Coverage = share of pixels nearest to each marker color (recomputed live while dragging).
 5. Harmony = template and rotation with the lowest weighted hue error; weights = coverage × chroma, neutrals ignored. Templates (offsets from the first target): monochromatic [0], analogous [−30, 0, 30], **analogous + accent** [−30, 0, 30, 180] (neighbours with the complement as an accent), complementary [0, 180], split-complementary [0, 150, 210], triadic [0, 120, 240], **tetradic / rectangle** [0, 60, 180, 240] (two complementary pairs, for photos with two color families and their counter-colors) and square [0, 90, 180, 270]. Each extra target costs 50 degrees² in the comparison, so a simpler template wins when the fit is similar.
