@@ -156,6 +156,16 @@ import Testing
                 compareMode: "Split", splitPosition: 0.35)
     }
 
+    @Test func protectedMarkersSurviveARoundTripAndOldFilesStillRead() throws {
+        var session = Self.sample()
+        session.markers[1].isProtected = true
+        let encoder = JSONEncoder()
+        let decoded = try JSONDecoder().decode(Session.self, from: encoder.encode(session))
+        #expect(decoded.markers.map(\.isProtected) == [nil, true])
+        let old = ##"{"x":0.1,"y":0.2,"hex":"#000000"}"##
+        #expect(try JSONDecoder().decode(Session.Marker.self, from: Data(old.utf8)).isProtected == nil)
+    }
+
     @Test func sidecarSitsNextToPhoto() {
         let url = Session.sidecarURL(for: URL(fileURLWithPath: "/photos/IMG_1.CR3"))
         #expect(url.path == "/photos/IMG_1.CR3.coloranalyze.json")
@@ -1796,6 +1806,13 @@ import Testing
         for wheel in [heuristic.preset.shadows, heuristic.preset.midtones, heuristic.preset.highlights] { p += [Double(wheel.hue), Double(wheel.saturation), 0] }
         p += [0, 0, 0, 0, 0]
         #expect(problem.meanErrors(p).after > fit.after + 3)
+    }
+
+    @Test func aProtectedColorAimedAtItsOwnHueIsLeftAlone() {
+        let moved = [Self.input(100, 0.5, 0.45, share: 1, target: 130)]
+        let protected = [Self.input(100, 0.5, 0.45, share: 1, target: 100)]
+        #expect(ColorGradingSuggestion.optimized(from: moved, strength: .moderate).preset.midtones != .neutral)
+        #expect(ColorGradingSuggestion.optimized(from: protected, strength: .moderate).preset.midtones == .neutral)
     }
 
     @Test func staysWithinTheStrengthAndKeepsRangesWithoutColorsNeutral() {

@@ -12,6 +12,8 @@ struct Marker: Identifiable, Equatable {
     var share: Double = 0
     /// Plain pixel share, without weighting.
     var areaShare: Double = 0
+    /// A color to leave as it is: the grading suggestions aim it at its own hue instead of at the harmony.
+    var isProtected = false
 }
 
 /// How much more the subject of the photo counts than the background.
@@ -481,7 +483,7 @@ final class AnalysisModel {
             graded: afterImage?.url.path,
             colorCount: colorCount,
             weighting: weighting == .off ? nil : weighting.rawValue,
-            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex) },
+            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex, isProtected: $0.isProtected ? true : nil) },
             harmony: harmonyChoice?.rawValue,
             harmonyRotation: harmonyRotationOverride,
             hueSpace: hueSpace == .rgb ? nil : hueSpace.rawValue,
@@ -531,7 +533,9 @@ final class AnalysisModel {
         harmonyRotationOverride = session.harmonyRotation
         markers = session.markers.map { saved in
             let location = CGPoint(x: min(1, max(0, saved.x)), y: min(1, max(0, saved.y)))
-            return Marker(location: location, color: sample(at: location))
+            var marker = Marker(location: location, color: sample(at: location))
+            marker.isProtected = saved.isProtected ?? false
+            return marker
         }
         selectedMarkerID = nil
         hoveredMarkerID = nil
@@ -785,6 +789,15 @@ final class AnalysisModel {
         isDirty = true
     }
 
+    /// Protects a color (or lifts the protection): the suggestions then leave its hue where it is.
+    func toggleProtected(_ id: Marker.ID) {
+        guard let i = markers.firstIndex(where: { $0.id == id }) else { return }
+        registerMarkerUndo(markers[i].isProtected ? "Unprotect Color" : "Protect Color")
+        markers[i].isProtected.toggle()
+        isDirty = true
+        refreshPreview()
+    }
+
     func number(of id: Marker.ID) -> Int {
         (markers.firstIndex { $0.id == id } ?? 0) + 1
     }
@@ -890,6 +903,7 @@ final class AnalysisModel {
         for marker in markers {
             hasher.combine(marker.color.hex)
             hasher.combine(Int((marker.share * 10_000).rounded()))
+            hasher.combine(marker.isProtected)
         }
         hasher.combine(harmonyChoice?.rawValue)
         hasher.combine(harmonyRotationOverride)
@@ -913,12 +927,14 @@ final class AnalysisModel {
             guard let fit = harmony else { return nil }
             inputs = markers.map {
                 let hue = $0.color.hsb.h
-                return .init(color: $0.color, share: $0.share, targetHue: hue + fit.shift(for: hue))
+                return .init(color: $0.color, share: $0.share, targetHue: $0.isProtected ? hue : hue + fit.shift(for: hue))
             }
         case .series:
             for marker in markers {
                 if marker.color.chroma < DxOMapping.neutralChroma {
                     // Greys have no target, but the grading must not tint them.
+                    inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h))
+                } else if marker.isProtected {
                     inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h))
                 } else if let shift = seriesMatch(for: marker)?.hueShift {
                     inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h + shift))
@@ -936,11 +952,12 @@ final class AnalysisModel {
         let aim = effectiveGradingTarget
         let fit = harmony
         return HSLSuggestion.channels(from: markers.enumerated().map { index, marker in
-            let shift: Double? = switch aim {
+            let target: Double? = switch aim {
             case .harmony: fit?.shift(for: marker.color.hsb.h)
             case .series: seriesMatch(for: marker)?.hueShift
             case .emphasize: nil
             }
+            let shift = marker.isProtected ? nil : target
             return HSLSuggestion.Input(number: index + 1, color: marker.color, share: marker.share, hueShift: shift)
         })
     }

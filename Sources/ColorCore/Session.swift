@@ -13,11 +13,14 @@ public struct Session: Codable, Sendable, Equatable {
         public var y: Double
         /// Color at save time. Informational: colors are re-sampled from the photo on restore.
         public var hex: String
+        /// True for a color the grading suggestions should leave alone; nil (absent) = not protected.
+        public var isProtected: Bool?
 
-        public init(x: Double, y: Double, hex: String) {
+        public init(x: Double, y: Double, hex: String, isProtected: Bool? = nil) {
             self.x = x
             self.y = y
             self.hex = hex
+            self.isProtected = isProtected
         }
     }
 

@@ -143,7 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //     [--export-colors list.csv|list.json] [--export-colors-excel list.csv]
         //     [--weighting off|moderate|strong] [--wheel rgb|ryb|dxo|oklch] [--intention "warm, calm"]
         //     [--export-dxo-preset grading.preset] [--grading-strength subtle|moderate|strong] [--grading-style neutral|warm-highlights|cool-highlights|teal-orange|warm-overall|cool-overall|faded]
-        //     [--grading-target harmony|series|reference]`
+        //     [--grading-target harmony|series|reference] [--protect 2,5]`
         // `ColorAnalyze --series a.jpg b.jpg … [--series-colors N] [--palette-size N]
         //     [--export-series palette.csv|series.json] [--export-series-photos photos.csv]
         //     [--export-series-report overview.png]`
@@ -159,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         var photo: String?, graded: String?, report: String?, reference: String?
         var photoColors: Int?
+        var protectedNumbers: [Int] = []
         var problems: [String] = []
         /// Parses an enum-like option value; a wrong one is reported instead of silently ignored.
         func choice<T>(_ option: String, _ parse: (String) -> T?) -> T? {
@@ -186,6 +187,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "--graded": graded = value()
             case "--reference": reference = value()
             case "--add-missing": addMissing = min(12, max(0, value().flatMap(Int.init) ?? 0))
+            case "--protect":
+                protectedNumbers = choice(arg) { text in
+                    let numbers = text.split(separator: ",").compactMap { Int($0) }
+                    return numbers.count == text.split(separator: ",").count ? numbers : nil
+                } ?? []
             case "--colors": photoColors = choice(arg) { Int($0).flatMap { (3...12).contains($0) ? $0 : nil } }
             case "--weighting": weighting = choice(arg) { Weighting(rawValue: $0.lowercased()) }
             case "--wheel": wheel = choice(arg) { HueSpace(rawValue: $0.lowercased()) }
@@ -288,6 +294,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 series.intention = intention
             }
             for _ in 0..<addMissing { await model.suggestMarker().value }
+            for number in protectedNumbers where model.markers.indices.contains(number - 1) && !model.markers[number - 1].isProtected {
+                model.toggleProtected(model.markers[number - 1].id)
+            }
             if let gradingStrength { model.useGradingStrength(gradingStrength) }
             if let gradingStyle { model.withoutRemembering { model.gradingStyle = gradingStyle } }
             if let gradingTarget { model.gradingTarget = gradingTarget }

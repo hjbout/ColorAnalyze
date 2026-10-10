@@ -17,6 +17,7 @@ struct ColorListView: View {
                         .onHover { model.hover(marker.id, inside: $0) }
                         .contextMenu {
                             Button("Copy Hex") { copy(marker.color.hex) }
+                            Button(marker.isProtected ? "Unprotect Color" : "Protect Color (keep its hue)") { model.toggleProtected(marker.id) }
                             Button("Remove Marker") { model.removeMarker(marker.id) }
                         }
                 }
@@ -128,7 +129,13 @@ private struct ColorRow: View {
                         Text("In range · \(SkinTone.describe(offset: offset))")
                     }
                 }
-                if let harmony, channel != .neutral {
+                if marker.isProtected {
+                    GridRow {
+                        Text("Protected").foregroundStyle(.secondary)
+                        Text("Kept as it is: the suggestions do not aim it at the harmony")
+                            .foregroundStyle(.orange)
+                    }
+                } else if let harmony, channel != .neutral {
                     let shift = harmony.shift(for: color.hsb.h)
                     GridRow {
                         Text("Harmony").foregroundStyle(.secondary)
