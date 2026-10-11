@@ -32,9 +32,16 @@ import SwiftUI
 
     private static func handle(_ event: NSEvent, _ model: AnalysisModel) -> Bool {
         guard event.window != nil, event.window === NSApp.keyWindow, !event.isARepeat,
-              event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
-              let key = event.charactersIgnoringModifiers, key.count == 1, let number = Int(key), (1...9).contains(number),
-              !(event.window?.firstResponder is NSText), model.markers.indices.contains(number - 1) else { return false }
+              !(event.window?.firstResponder is NSText),
+              let key = event.charactersIgnoringModifiers, key.count == 1, let number = Int(key) else { return false }
+        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if flags == .option {
+            // ⌥1, ⌥2, ⌥4: the preview amount. Taken here as well, or the list reads the digit as a type-to-select first.
+            guard [1, 2, 4].contains(number) else { return false }
+            model.previewAmount = Double(number)
+            return true
+        }
+        guard flags.isEmpty, (1...9).contains(number), model.markers.indices.contains(number - 1) else { return false }
         let id = model.markers[number - 1].id
         model.selectedMarkerID = model.selectedMarkerID == id ? nil : id
         return true
