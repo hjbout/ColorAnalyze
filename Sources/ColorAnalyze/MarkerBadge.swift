@@ -7,38 +7,33 @@ extension SRGBColor {
         let p3 = displayP3Components
         return Color(.displayP3, red: p3.r, green: p3.g, blue: p3.b)
     }
-    /// WCAG 2 relative luminance (the sRGB curve proper).
-    private var wcagLuminance: Double {
-        let l = linear
-        return Double(0.2126 * l.x + 0.7152 * l.y + 0.0722 * l.z)
-    }
-    /// True when black digits read better on this color than white ones: whichever has the higher WCAG contrast ratio, so
-    /// the digits always reach at least 4.5:1 (an APCA-style preference for white on mid-tones left some oranges, greens
-    /// and cyans at 3:1 while black would have given 7:1).
-    var prefersDarkText: Bool {
-        let w = wcagLuminance
-        return (w + 0.05) / 0.05 >= 1.05 / (w + 0.05)
-    }
+    /// OKLab lightness from which black digits read better than white ones with their dark halo.
+    static let darkTextLightness: Float = 0.8
+    /// True when black digits read better on this color than white ones: only on clearly light colors. On every mid-tone
+    /// (browns, oranges, mid greens and blues, mid greys) white with a thin dark halo reads better, whatever WCAG 2's
+    /// contrast ratio says (it favors black there, which looks muddy at the size of a marker number).
+    var prefersDarkText: Bool { oklab.x >= Self.darkTextLightness }
     /// Black or white, whichever reads better on this color.
     var contrastingText: Color { prefersDarkText ? .black : .white }
-    /// The opposite, as a thin halo around the digits.
-    var contrastingHalo: Color { prefersDarkText ? .white : .black }
 }
 
-/// A number with a thin halo, readable on any fill.
+/// A number readable on any fill: black digits plain, white digits with a thin dark halo. A light halo around black digits
+/// blurs them on mid-tones (browns, oranges, mid greens), where black on its own is crisp.
 struct BadgeNumber: View {
     let number: Int
     let color: SRGBColor
     let size: CGFloat
 
     var body: some View {
-        let halo = color.contrastingHalo.opacity(0.7)
         let text = Text("\(number)").font(.system(size: size, weight: .heavy, design: .rounded))
         ZStack {
-            text.foregroundStyle(halo).offset(x: 0.7, y: 0)
-            text.foregroundStyle(halo).offset(x: -0.7, y: 0)
-            text.foregroundStyle(halo).offset(x: 0, y: 0.7)
-            text.foregroundStyle(halo).offset(x: 0, y: -0.7)
+            if !color.prefersDarkText {
+                let halo = Color.black.opacity(0.6)
+                text.foregroundStyle(halo).offset(x: 0.7, y: 0)
+                text.foregroundStyle(halo).offset(x: -0.7, y: 0)
+                text.foregroundStyle(halo).offset(x: 0, y: 0.7)
+                text.foregroundStyle(halo).offset(x: 0, y: -0.7)
+            }
             text.foregroundStyle(color.contrastingText)
         }
     }
