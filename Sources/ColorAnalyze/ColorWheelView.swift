@@ -139,7 +139,7 @@ struct ColorWheelView: View {
                     }
 
                     if let fit {
-                        HarmonyOverlay(fit: fit, markers: model.markers, center: center, radius: radius)
+                        HarmonyOverlay(fit: fit, markers: model.markers, center: center, radius: radius, showsShifts: showColors)
                             .allowsHitTesting(false)
                         rotationHandle(fit: fit, center: center, radius: radius)
                     }
@@ -789,6 +789,8 @@ struct HarmonyOverlay: View {
     let markers: [Marker]
     let center: CGPoint
     let radius: CGFloat
+    /// Draws the arc from each color to its target; off when the color markers are hidden, which the arcs start from.
+    var showsShifts = true
 
     var body: some View {
         ZStack {
@@ -820,6 +822,7 @@ struct HarmonyOverlay: View {
                 wedges.stroke(.white.opacity(0.95), lineWidth: 1)
             }
 
+            if showsShifts {
             Path { path in
                 for marker in markers where DxOMapping.harmonyWeight(color: marker.color, share: 1) > 0 {
                     let hsb = marker.color.hsb
@@ -839,6 +842,7 @@ struct HarmonyOverlay: View {
                 }
             }
             .stroke(.black.opacity(0.55), lineWidth: 1.5)
+            }
         }
     }
 }
