@@ -16,6 +16,31 @@ import SwiftUI
     }
 }
 
+/// Keys 1–9 toggle the color with that number. A monitor takes them before the list's type-to-select does, which
+/// jumped to a row by its typed number only some of the time.
+@MainActor private final class DigitKeyMonitor {
+    static let shared = DigitKeyMonitor()
+    private var monitor: Any?
+
+    func start(_ model: AnalysisModel) {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let used = MainActor.assumeIsolated { Self.handle(event, model) }
+            return used ? nil : event
+        }
+    }
+
+    private static func handle(_ event: NSEvent, _ model: AnalysisModel) -> Bool {
+        guard event.window != nil, event.window === NSApp.keyWindow, !event.isARepeat,
+              event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+              let key = event.charactersIgnoringModifiers, key.count == 1, let number = Int(key), (1...9).contains(number),
+              !(event.window?.firstResponder is NSText), model.markers.indices.contains(number - 1) else { return false }
+        let id = model.markers[number - 1].id
+        model.selectedMarkerID = model.selectedMarkerID == id ? nil : id
+        return true
+    }
+}
+
 struct ColorListView: View {
     @Environment(AnalysisModel.self) private var model
 
@@ -64,7 +89,10 @@ struct ColorListView: View {
             }
         }
         .listStyle(.inset)
-        .onAppear { MouseDownMonitor.shared.start(model) }
+        .onAppear {
+            MouseDownMonitor.shared.start(model)
+            DigitKeyMonitor.shared.start(model)
+        }
     }
 }
 

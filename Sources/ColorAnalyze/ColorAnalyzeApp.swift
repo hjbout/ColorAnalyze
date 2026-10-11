@@ -86,6 +86,12 @@ struct ColorAnalyzeApp: App {
                     .keyboardShortcut("g", modifiers: [])
                 Button("Toggle Preview of the Suggestion") { delegate.model.togglePreview() }
                     .keyboardShortcut("p", modifiers: [])
+                Button("Preview Amount ×1") { delegate.model.previewAmount = 1 }
+                    .keyboardShortcut("1", modifiers: .option)
+                Button("Preview Amount ×2") { delegate.model.previewAmount = 2 }
+                    .keyboardShortcut("2", modifiers: .option)
+                Button("Preview Amount ×4") { delegate.model.previewAmount = 4 }
+                    .keyboardShortcut("4", modifiers: .option)
                 Toggle("Show Preview Below the Original", isOn: Binding(
                     get: { delegate.model.previewLayout == .stacked },
                     set: { delegate.model.previewLayout = $0 ? .stacked : .split }))
