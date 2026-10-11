@@ -71,7 +71,7 @@ public struct GradePreviewSettings: Sendable, Equatable {
 /// color (HSV hue in Rec.2020), weighted by DxO's channel fades, at constant lightness.
 public enum GradePreview {
     /// Everything about the settings that does not depend on the pixel, so a pixel costs little.
-    public struct Plan {
+    public struct Plan: Sendable {
         /// Per wheel (shadows, midtones, highlights, master): what a channel gets at the top of its curve (the hue
         /// direction times the saturation), and the Luminance as a fraction.
         let tintVectors: [SIMD3<Float>]
@@ -422,7 +422,17 @@ public enum GradePreview {
 
     /// Renders `source` with the settings. The result has the size of the source.
     public static func render(_ source: CGImage, settings: GradePreviewSettings) -> CGImage? {
-        let buffer = PixelBuffer(image: source, maxDimension: max(source.width, source.height))
+        render(PixelBuffer(image: source, maxDimension: max(source.width, source.height)), settings: settings)
+    }
+
+    /// linear → 8-bit sRGB through a table: a power function per pixel would dominate the cost.
+    private static let encodeBytes: [UInt8] = (0...4096).map {
+        UInt8(min(255, max(0, (ColorMath.linearToSRGB(Double($0) / 4096) * 255).rounded())))
+    }
+
+    /// Renders an already decoded photo with the settings, in bands of rows on all cores. Decode the photo once
+    /// (`PixelBuffer(image:maxDimension:)`) and keep it, so a preview that follows a drag only pays for the grading.
+    public static func render(_ buffer: PixelBuffer, settings: GradePreviewSettings) -> CGImage? {
         let plan = Plan(settings)
         let w = buffer.width, h = buffer.height
         guard let context = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
@@ -430,18 +440,19 @@ public enum GradePreview {
                                       bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
               let data = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
         let rowBytes = context.bytesPerRow
-        // linear → 8-bit sRGB through a table: a power function per pixel would dominate the cost.
-        let encode: [UInt8] = (0...4096).map { UInt8(min(255, max(0, (ColorMath.linearToSRGB(Double($0) / 4096) * 255).rounded()))) }
-        func byte(_ v: Float) -> UInt8 { encode[Int(min(1, max(0, v)) * 4096)] }
-
-        for y in 0..<h {
-            for x in 0..<w {
-                let graded = plan.applyLinear(linear: buffer.linear[y * w + x], lab: buffer.lab[y * w + x])
-                let offset = y * rowBytes + x * 4
-                data[offset] = byte(graded.x)
-                data[offset + 1] = byte(graded.y)
-                data[offset + 2] = byte(graded.z)
-                data[offset + 3] = 255
+        nonisolated(unsafe) let pixels = data   // every band writes its own rows
+        let linear = buffer.linear, lab = buffer.lab, encode = encodeBytes
+        let bands = min(h, 64)
+        DispatchQueue.concurrentPerform(iterations: bands) { band in
+            for y in (band * h / bands)..<((band + 1) * h / bands) {
+                for x in 0..<w {
+                    let graded = plan.applyLinear(linear: linear[y * w + x], lab: lab[y * w + x])
+                    let offset = y * rowBytes + x * 4
+                    pixels[offset] = encode[Int(min(1, max(0, graded.x)) * 4096)]
+                    pixels[offset + 1] = encode[Int(min(1, max(0, graded.y)) * 4096)]
+                    pixels[offset + 2] = encode[Int(min(1, max(0, graded.z)) * 4096)]
+                    pixels[offset + 3] = 255
+                }
             }
         }
         return context.makeImage()

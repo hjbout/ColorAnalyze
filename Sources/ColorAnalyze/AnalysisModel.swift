@@ -220,9 +220,12 @@ final class AnalysisModel {
 
     var previewImage: CGImage?
 
+    /// The render loop of the preview, while it runs.
     @ObservationIgnored var previewTask: Task<Void, Never>?
-
-    @ObservationIgnored var previewGeneration = 0
+    /// The newest settings the preview should show, waiting for the render loop.
+    @ObservationIgnored var pendingPreview: (image: LoadedImage, settings: GradePreviewSettings)?
+    /// The photo decoded for the preview, kept so a render only pays for the grading.
+    @ObservationIgnored var previewSource: (image: CGImage, buffer: PixelBuffer)?
 
     /// The window's undo manager (Edit ▸ Undo / Redo, ⌘Z / ⇧⌘Z); handed over by the main view.
     @ObservationIgnored weak var undoManager: UndoManager? {

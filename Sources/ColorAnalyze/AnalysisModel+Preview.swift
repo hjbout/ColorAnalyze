@@ -68,25 +68,39 @@ extension AnalysisModel {
         showPreview.toggle()
     }
 
-    /// Renders the preview in the background; a newer request replaces an older one.
+    /// Renders the preview in the background. While a render runs, newer requests wait and only the newest is rendered
+    /// next, so a drag shows a stream of frames that keeps up with it instead of one frame once it rests.
     func refreshPreview() {
-        previewTask?.cancel()
         guard showPreview, afterImage == nil, let image, let settings = previewSettings else {
+            pendingPreview = nil
             previewImage = nil
+            if self.image == nil { previewSource = nil }
             return
         }
-        previewGeneration += 1
-        let generation = previewGeneration
-        let source = image.display
-        previewTask = Task {
-            // Dragging a marker changes the settings all the time: render once it rests.
-            try? await Task.sleep(for: .milliseconds(150))
-            guard !Task.isCancelled else { return }
+        pendingPreview = (image, settings)
+        guard previewTask == nil else { return }   // the running loop picks it up
+        previewTask = Task { await renderPendingPreviews() }
+    }
+
+    private func renderPendingPreviews() async {
+        while let (image, settings) = pendingPreview {
+            pendingPreview = nil
+            let buffer: PixelBuffer
+            if let source = previewSource, source.image === image.display {
+                buffer = source.buffer
+            } else {
+                let display = image.display
+                buffer = await Task.detached(priority: .userInitiated) {
+                    PixelBuffer(image: display, maxDimension: max(display.width, display.height))
+                }.value
+                previewSource = (display, buffer)
+            }
             let rendered = await Task.detached(priority: .userInitiated) {
-                GradePreview.render(source, settings: settings)
+                GradePreview.render(buffer, settings: settings)
             }.value
-            guard generation == previewGeneration else { return }
-            previewImage = rendered
+            // Shown unless the preview was switched off or the photo changed in the meantime.
+            if showPreview, afterImage == nil, self.image?.display === image.display { previewImage = rendered }
         }
+        previewTask = nil
     }
 }
