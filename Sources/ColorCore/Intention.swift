@@ -42,6 +42,8 @@ public enum Intention {
     /// Words for the two styles that are not about temperature.
     static let cinematicStems = ["cinema", "filmisch", "film", "blockbuster", "teal"]
     static let fadedStems = ["fade", "vervaag", "vintage", "retro", "nostalg", "matte"]
+    static let monochromeStems = ["monochro", "eenkleur", "minimal", "tone-on-tone"]
+    static let blueHourStems = ["twilight", "schemer", "dusk", "dawn", "bluehour"]
 
     /// The grading style a note points to: warm words ask for warm highlights over cool shadows, cool words for the reverse.
     /// nil when the note has no temperature word, or has both kinds (it does not decide), and the words found are returned
@@ -58,9 +60,11 @@ public enum Intention {
             // No temperature word: a word for one of the other styles decides, when it is the only kind there.
             let cinematic = tokens.filter { token in cinematicStems.contains { token.hasPrefix($0) } }
             let faded = tokens.filter { token in fadedStems.contains { token.hasPrefix($0) } }
-            if !cinematic.isEmpty, faded.isEmpty { return (.tealOrange, cinematic) }
-            if cinematic.isEmpty, !faded.isEmpty { return (.faded, faded) }
-            return nil
+            let monochrome = tokens.filter { token in monochromeStems.contains { token.hasPrefix($0) } }
+            let blueHour = tokens.filter { token in blueHourStems.contains { token.hasPrefix($0) } }
+            let kinds: [(GradingStyle, [String])] = [(.tealOrange, cinematic), (.faded, faded), (.monochrome, monochrome),
+                                                    (.blueHour, blueHour)].filter { !$0.1.isEmpty }
+            return kinds.count == 1 ? (kinds[0].0, kinds[0].1) : nil
         }
     }
 }

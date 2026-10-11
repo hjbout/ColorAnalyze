@@ -490,6 +490,8 @@ import Testing
         #expect(Intention.suggestedStyle(for: "Filmisch")?.style == .tealOrange)
         #expect(Intention.suggestedStyle(for: "vintage, nostalgic")?.style == .faded)
         #expect(Intention.suggestedStyle(for: "nostalgisch en vervaagd")?.style == .faded)
+        #expect(Intention.suggestedStyle(for: "monochrome, calm")?.style == .monochrome)
+        #expect(Intention.suggestedStyle(for: "schemering")?.style == .blueHour)
         #expect(Intention.suggestedStyle(for: "cinematic and faded") == nil)            // two kinds: no decision
         #expect(Intention.suggestedStyle(for: "warme, nostalgische avond")?.style == .warmHighlights)   // temperature first
         #expect(Intention.suggestedStyle(for: "matig licht") == nil)
@@ -1879,7 +1881,7 @@ import Testing
         #expect(ColorGradingSuggestion.optimized(from: Self.scene, strength: .strong, style: .neutral) == neutral)
     }
 
-    @Test func theOtherStylesDoWhatTheirNamesSay() {
+    @Test func theOtherStylesDoWhatTheirNamesSay() throws {
         func lab(_ s: ColorGradingSuggestion.Suggestion, _ lightness: Float) -> SIMD3<Float> {
             func tint(_ w: ColorGradingPreset.Wheel) -> GradePreviewSettings.Tint {
                 .init(dxoHue: Double(w.hue), saturation: Double(w.saturation), luminance: Double(w.luminance))
@@ -1918,6 +1920,20 @@ import Testing
         #expect(faded.toneBlacks > 0)                                              // done with the Light palette's Blacks
         #expect(teal.toneBlacks == 0 && warm.toneBlacks == 0)
         #expect(teal.preset.master == .neutral && faded.preset.master == .neutral)
+        // The styles that follow the photo: the lights lean to its dominant hue, the shadows to the opposite one.
+        let dominant = try? #require(GradingStyle.dominantHue(of: Self.scene))
+        if let dominant {
+            let split = ColorGradingSuggestion.optimized(from: Self.scene, strength: .strong, style: .complementary)
+            let mono = ColorGradingSuggestion.optimized(from: Self.scene, strength: .strong, style: .monochrome)
+            #expect(split.preset.shadows.saturation > 0 && split.preset.highlights.saturation > 0)
+            #expect(split.preset.shadows.hue != split.preset.highlights.hue)
+            #expect(mono.preset.shadows.hue == mono.preset.highlights.hue || abs(mono.preset.shadows.hue - mono.preset.highlights.hue) < 40)
+            _ = dominant
+        }
+        let golden = ColorGradingSuggestion.optimized(from: Self.scene, strength: .strong, style: .goldenHour)
+        let blue = ColorGradingSuggestion.optimized(from: Self.scene, strength: .strong, style: .blueHour)
+        #expect(lab(golden, 0.82).z > 0.008 && lab(golden, 0.25).z < lab(golden, 0.82).z)    // warm lights, cooler shade
+        #expect(lab(blue, 0.25).z < -0.008 && lab(blue, 0.55).z < 0)                          // deep blue shadows and middle
         // Every style stays within the strength.
         for style in GradingStyle.allCases {
             let s = ColorGradingSuggestion.optimized(from: Self.scene, strength: .subtle, style: style)
@@ -2043,5 +2059,22 @@ import Testing
     @Test func oneRestartIsThePlainRun() {
         let points = Self.points()
         #expect(KMeans.clusterBest(points, k: 4, restarts: 1).centroids == KMeans.cluster(points, k: 4).centroids)
+    }
+}
+
+@Suite struct ManualTargetTests {
+    @Test func aTargetSetByHandReplacesTheHarmonyInTheExport() {
+        let color = SRGBColor.fromHSB(h: 100, s: 0.6, b: 0.6)
+        let harmony = HarmonyFit(kind: .complementary, rotation: 100, deviation: 0)
+        let manual = ColorRecord(number: 1, location: .zero, color: color, share: 0.5, harmony: harmony, targetHue: 160)
+        #expect(manual.harmonyTargetHue == 160 && manual.harmonyShift == 60)
+        let automatic = ColorRecord(number: 1, location: .zero, color: color, share: 0.5, harmony: harmony)
+        #expect(automatic.harmonyShift == 0)
+    }
+
+    @Test func theSessionKeepsATargetSetByHand() throws {
+        let marker = Session.Marker(x: 0.1, y: 0.2, hex: "#112233", targetHue: 42)
+        let data = try JSONEncoder().encode(marker)
+        #expect(try JSONDecoder().decode(Session.Marker.self, from: data).targetHue == 42)
     }
 }

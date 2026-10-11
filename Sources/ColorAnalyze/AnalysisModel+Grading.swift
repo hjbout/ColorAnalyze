@@ -62,6 +62,7 @@ extension AnalysisModel {
             hasher.combine(marker.color.hex)
             hasher.combine(Int((marker.share * 10_000).rounded()))
             hasher.combine(isProtected(marker))
+            hasher.combine(marker.targetHue)
         }
         hasher.combine(harmonyChoice?.rawValue)
         hasher.combine(harmonyRotationOverride)
@@ -86,6 +87,7 @@ extension AnalysisModel {
             guard let fit = harmony else { return nil }
             inputs = markers.map {
                 let hue = $0.color.hsb.h
+                if let target = $0.targetHue { return .init(color: $0.color, share: $0.share, targetHue: target) }
                 return .init(color: $0.color, share: $0.share, targetHue: isProtected($0) ? hue : hue + fit.shift(for: hue))
             }
         case .series:
@@ -93,6 +95,8 @@ extension AnalysisModel {
                 if marker.color.chroma < DxOMapping.neutralChroma {
                     // Greys have no target, but the grading must not tint them.
                     inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h))
+                } else if let target = marker.targetHue {
+                    inputs.append(.init(color: marker.color, share: marker.share, targetHue: target))
                 } else if isProtected(marker) {
                     inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h))
                 } else if let shift = seriesMatch(for: marker)?.hueShift {
@@ -116,7 +120,7 @@ extension AnalysisModel {
             case .series: seriesMatch(for: marker)?.hueShift
             case .emphasize: nil
             }
-            let shift = isProtected(marker) ? nil : target
+            let shift = aim == .emphasize ? nil : marker.manualShift() ?? (isProtected(marker) ? nil : target)
             return HSLSuggestion.Input(number: index + 1, color: marker.color, share: marker.share, hueShift: shift)
         })
     }

@@ -14,7 +14,7 @@ extension AnalysisModel {
             graded: afterImage?.url.path,
             colorCount: colorCount,
             weighting: weighting == .off ? nil : weighting.rawValue,
-            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex, isProtected: $0.protection) },
+            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex, isProtected: $0.protection, targetHue: $0.targetHue) },
             harmony: harmonyChoice?.rawValue,
             harmonyRotation: harmonyRotationOverride,
             hueSpace: hueSpace == .rgb ? nil : hueSpace.rawValue,
@@ -66,6 +66,7 @@ extension AnalysisModel {
             let location = CGPoint(x: min(1, max(0, saved.x)), y: min(1, max(0, saved.y)))
             var marker = Marker(location: location, color: sample(at: location))
             marker.protection = saved.isProtected
+            marker.targetHue = saved.targetHue
             return marker
         }
         selectedMarkerID = nil
@@ -142,7 +143,7 @@ extension AnalysisModel {
         let records = markers.enumerated().map { index, marker in
             ColorRecord(number: index + 1, location: marker.location, color: marker.color, share: marker.share,
                         areaShare: isWeighted ? marker.areaShare : nil,
-                        after: afterImage == nil ? nil : afterColor(for: marker), harmony: fit)
+                        after: afterImage == nil ? nil : afterColor(for: marker), harmony: fit, targetHue: marker.targetHue)
         }
         return ColorExport(
             photo: image.url.lastPathComponent,

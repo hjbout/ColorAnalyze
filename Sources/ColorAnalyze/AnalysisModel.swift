@@ -15,6 +15,19 @@ struct Marker: Identifiable, Equatable {
     /// Set by hand: true = leave this color as it is (the grading suggestions aim it at its own hue instead of at the
     /// harmony), false = never protect it; nil = decided automatically (skin tones, when that is switched on).
     var protection: Bool?
+    /// Set by dragging its target on the wheel: the sRGB hue this color is aimed at, instead of the harmony's (or the
+    /// reference's) nearest target. It also beats the protection. nil = the automatic target.
+    var targetHue: Double?
+
+    /// Signed hue shift (sRGB degrees) from `hue` (default: the color's own) to the target set by hand, nil without one.
+    func manualShift(fromHue hue: Double? = nil) -> Double? {
+        targetHue.map { ColorMath.signedAngle(from: hue ?? color.hsb.h, to: $0) }
+    }
+
+    /// Hue shift to the target: the one set by hand, else the harmony's.
+    func targetShift(fromHue hue: Double? = nil, harmony: HarmonyFit?) -> Double? {
+        manualShift(fromHue: hue) ?? harmony?.shift(for: hue ?? color.hsb.h)
+    }
 }
 
 /// How much more the subject of the photo counts than the background.
@@ -348,6 +361,8 @@ final class AnalysisModel {
 
     /// Selected color when the mouse last went down in the color list (view state, see `dragStart`).
     @ObservationIgnored var selectionAtMouseDown: Marker.ID?
+    /// The color whose target is being dragged on the wheel, so the drag is one undo step.
+    @ObservationIgnored var draggingTargetID: Marker.ID?
 
     /// Marker sample radius as a fraction of the photo's short side.
     let sampleRadius = 0.015
@@ -440,6 +455,8 @@ final class AnalysisModel {
                 saliencyOverlay = nil
                 setWeights(nil)
                 compareMode = .split
+                // Every new photo starts on the Harmony tab, whatever tab was open before.
+                UserDefaults.standard.set(PaneTab.harmony.rawValue, forKey: PaneTab.storageKey)
                 NSDocumentController.shared.noteNewRecentDocumentURL(url)
                 if showSaliency { refreshSaliencyOverlay() }
                 if let session = savedSession(for: url) {
@@ -449,6 +466,8 @@ final class AnalysisModel {
                         await runAnalysis(markDirty: true)
                     }
                 } else {
+                    // A photo without a saved session starts neutral; a restored session keeps the style as it was.
+                    gradingStyle = .neutral
                     if let weightingOverride { setWeighting(weightingOverride) }
                     await runAnalysis(markDirty: false)
                     if let graded { await loadGraded(graded, markDirty: false) }

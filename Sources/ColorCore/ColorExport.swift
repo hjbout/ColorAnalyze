@@ -58,10 +58,10 @@ public struct ColorRecord: Codable, Sendable, Equatable {
 
     /// Builds a record from a marker. `after` is the color at the same position in the graded version.
     public init(number: Int, location: CGPoint, color: SRGBColor, share: Double, areaShare: Double? = nil,
-                after: SRGBColor? = nil, harmony: HarmonyFit? = nil) {
+                after: SRGBColor? = nil, harmony: HarmonyFit? = nil, targetHue: Double? = nil) {
         let rgb = color.rgb255, hsl = color.hsl
         let channel = DxOMapping.channel(for: color)
-        let shift = (channel == .neutral) ? nil : harmony?.shift(for: color.hsb.h)
+        let shift = (channel == .neutral) ? nil : targetHue.map { ColorMath.signedAngle(from: color.hsb.h, to: $0) } ?? harmony?.shift(for: color.hsb.h)
 
         self.number = number
         hex = color.hex
@@ -92,7 +92,7 @@ public struct ColorRecord: Codable, Sendable, Equatable {
                 saturationChange: Self.round((a.s - hsl.s) * 100, 1),
                 lightnessChange: Self.round((a.l - hsl.l) * 100, 1),
                 lStarChange: Self.round(after.lightness - color.lightness, 1),
-                harmonyShift: chromatic ? harmony.map { Self.round($0.shift(for: after.hsb.h), 1) } : nil,
+                harmonyShift: chromatic ? (targetHue.map { ColorMath.signedAngle(from: after.hsb.h, to: $0) } ?? harmony?.shift(for: after.hsb.h)).map { Self.round($0, 1) } : nil,
                 skinToneOffset: SkinTone.offset(of: after).map { Self.round($0, 1) }
             )
         }

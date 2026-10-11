@@ -84,6 +84,13 @@ enum WheelMarkerMode: String, CaseIterable, Identifiable {
         case .both: "Both"
         }
     }
+    var symbol: String {
+        switch self {
+        case .colors: "circle.fill"
+        case .targets: "scope"
+        case .both: "circle.circle"
+        }
+    }
     static let storageKey = "wheelMarkerMode"
 }
 
@@ -180,11 +187,28 @@ struct ColorWheelView: View {
                         ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
                             if let after = model.afterColor(for: marker) {
                                 let hsb = after.hsb
+                                let editable = model.canEditTargets && marker.color.chroma >= DxOMapping.neutralChroma
                                 GhostBadge(number: index + 1, color: after,
-                                           diameter: 16 + 30 * sqrt(marker.share))
+                                           diameter: 16 + 30 * sqrt(marker.share), isManual: marker.targetHue != nil)
                                     .position(WheelGeometry.point(rgbHue: hsb.h, space: model.hueSpace, saturation: hsb.s,
                                                                   center: center, radius: radius))
-                                    .allowsHitTesting(false)
+                                    .allowsHitTesting(editable)
+                                    .onTapGesture(count: 2) {
+                                        guard marker.targetHue != nil else { return }
+                                        model.registerMarkerUndo("Reset Target \(index + 1)")
+                                        model.setTargetHue(nil, for: marker.id)
+                                    }
+                                    .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .named("wheel"))
+                                        .onChanged { value in
+                                            if model.draggingTargetID != marker.id {
+                                                model.draggingTargetID = marker.id
+                                                model.registerMarkerUndo("Move Target \(index + 1)")
+                                            }
+                                            let position = WheelGeometry.hue(at: value.location, center: center)
+                                            model.setTargetHue(model.hueSpace.rgbHue(atPosition: position).rounded(), for: marker.id)
+                                        }
+                                        .onEnded { _ in model.draggingTargetID = nil })
+                                    .help(editable ? "Drag to aim this color at another hue; double-click to reset" : "")
                             }
                         }
                     }
@@ -194,15 +218,33 @@ struct ColorWheelView: View {
                 .onTapGesture { model.selectedMarkerID = nil }
             }
             .aspectRatio(1, contentMode: .fit)
-
-            if model.hasAfterColors {
-                Picker("Markers", selection: $markerMode) {
-                    ForEach(WheelMarkerMode.allCases) { Text($0.title).tag($0) }
+            .overlay(alignment: .topTrailing) {
+                if model.hasAfterColors {
+                    HStack(spacing: 2) {
+                        ForEach(WheelMarkerMode.allCases) { mode in
+                            let selected = markerMode == mode
+                            Button {
+                                markerMode = mode
+                            } label: {
+                                Image(systemName: mode.symbol)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .frame(width: 30, height: 22)
+                                    .foregroundStyle(selected ? Color.white : Color.primary)
+                                    .background(selected ? Color.accentColor : Color.clear, in: Capsule())
+                                    .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .help(mode.title)
+                            .accessibilityLabel(mode.title)
+                        }
+                    }
+                    .padding(3)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(.primary.opacity(0.12)))
+                    .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                    .padding(.trailing, 20)
+                    .help("Colors: the markers of the chosen colors. Targets: where grading moves them to. Both: the two, joined by trails.")
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 20)
-                .help("Colors: the markers of the chosen colors. Targets: where grading moves them to. Both: the two, joined by trails.")
             }
 
             LightnessStrip(markers: model.markers, selectedID: model.selectedMarkerID,
@@ -293,15 +335,14 @@ struct ColorWheelView: View {
             IntentionField(title: "Intention", placeholder: "What should this photo feel like?",
                            text: $model.intention)
             HStack(spacing: 6) {
+                Text("Wheel").font(.subheadline).help("RGB is the ordinary sRGB hue circle. RYB is the artist's red–yellow–blue wheel, where the classic complements are red–green, orange–blue and yellow–violet. DxO is PhotoLab's own hue axis: the angles are the Hue numbers of its Color Grading and HSL wheels. OKLCH is a perceptual wheel: equal angles look like equal color steps.\n\nOn the DxO, RYB and OKLCH wheels the harmonies are computed in that wheel's terms, but hue shifts and target hues in the list stay in sRGB degrees.")
                 Picker("Wheel", selection: $model.hueSpace) {
                     ForEach(HueSpace.allCases) { Text($0.displayName).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .help("RGB is the ordinary sRGB hue circle. RYB is the artist's red–yellow–blue wheel, where the classic complements are red–green, orange–blue and yellow–violet. DxO is PhotoLab's own hue axis: the angles are the Hue numbers of its Color Grading and HSL wheels. OKLCH is a perceptual wheel: equal angles look like equal color steps.\n\nOn the DxO, RYB and OKLCH wheels the harmonies are computed in that wheel's terms, but hue shifts and target hues in the list stay in sRGB degrees.")
+                .labelsHidden()
+                Text("Targets").font(.subheadline).help("Targets: a color inside the sector around a target counts as on target and is not shifted.")
                 Menu {
-                    Toggle("Skin Tone Line", isOn: $model.showSkinTone)
-                    Toggle("Protect Skin Tones", isOn: $model.protectSkin)
-                    Divider()
                     Picker("Targets", selection: $model.harmonySector) {
                         ForEach(HarmonySector.allCases) { Text($0.title).tag($0) }
                     }
@@ -312,8 +353,16 @@ struct ColorWheelView: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help("Skin Tone Line: reference band for skin tones (sRGB hue ≈ 13°–37°). Protect Skin Tones: skin-like colors keep their hue; right-click a color to override this for one color. Targets: a color inside the sector around a target counts as on target and is not shifted.")
             }
+            HStack(spacing: 12) {
+                Toggle("Skin tone line", isOn: $model.showSkinTone)
+                    .help("Reference band for skin tones (sRGB hue ≈ 13°–37°). Skin-like colors in the list are marked whether or not the line is shown.")
+                Toggle("Protect skin tones", isOn: $model.protectSkin)
+                    .help("Skin-like colors keep their hue: the grading suggestions do not aim them at the harmony. Right-click a color to override this for one color. Sand, wood or a red wall can look like skin to this rule of thumb.")
+                Spacer(minLength: 0)
+            }
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
             Picker("Harmony", selection: $model.harmonyChoice) {
                 Text("Auto-detect").tag(HarmonyKind?.none)
                 Divider()
@@ -396,7 +445,7 @@ struct ColorWheelView: View {
         VStack(alignment: .leading, spacing: 8) {
             whiteBalanceNote()
             HStack {
-                Text("Aim at")
+                Text("Aim at").help("Harmony: tint toward the harmony's hues. Series / Reference: toward that palette. Tints: strengthen the faint tint each tonal range already has.")
                 Picker("Aim at", selection: $model.gradingTarget) {
                     Text("Harmony").tag(AnalysisModel.GradingTarget.harmony)
                     if model.isSeriesReferenceShown {
@@ -407,19 +456,21 @@ struct ColorWheelView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
             }
-            .help("Harmony: tint toward the harmony's hues. Series / Reference: toward that palette. Tints: strengthen the faint tint each tonal range already has.")
             if model.gradingFallsBackToTints {
                 Text("The colors are nearly neutral, so there is nothing to aim at: the grading strengthens the tints the photo already has.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Picker("Style", selection: $model.gradingStyle) {
-                ForEach(GradingStyle.allCases) { Text($0.displayName).tag($0) }
+            HStack {
+                Text("Style").help("A creative direction on top of the harmony: the greys of the shadows and highlights take on a cast of their own, such as warm highlights over cool shadows. Not available when only the existing tints are strengthened.")
+                Picker("Style", selection: $model.gradingStyle) {
+                    ForEach(GradingStyle.allCases) { Text($0.displayName).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
             }
-            .pickerStyle(.menu)
             .disabled(model.effectiveGradingTarget == .emphasize)
-            .help("A creative direction on top of the harmony: the greys of the shadows and highlights take on a cast of their own, such as warm highlights over cool shadows. Not available when only the existing tints are strengthened.")
             if let hint = model.intentionStyle, model.effectiveGradingTarget != .emphasize {
                 HStack(spacing: 6) {
                     Image(systemName: "lightbulb")
@@ -468,6 +519,7 @@ struct ColorWheelView: View {
                       + "Show the photo with the suggested Color Grading and HSL values applied, right of a divider you can drag or below the original (P). An approximation of the tints and hue turns, not PhotoLab's own rendering.")
             Spacer()
             if model.showPreview {
+                Text("Amount").font(.caption).help("×1 is as suggested; ×2 and ×4 exaggerate the tints (not the hue turns), to see the direction of a small suggestion")
                 Picker("Amount", selection: $model.previewAmount) {
                     Text("×1").tag(1.0)
                     Text("×2").tag(2.0)
@@ -476,7 +528,6 @@ struct ColorWheelView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(width: 110)
-                .help("×1 is as suggested; ×2 and ×4 exaggerate the tints (not the hue turns), to see the direction of a small suggestion")
             }
         }
     }
@@ -491,13 +542,13 @@ struct ColorWheelView: View {
                     .font(.subheadline.weight(.semibold))
                     .help("A starting point, not a recipe: Hue and Saturation of the three wheels are chosen with a model of PhotoLab's Color Grading, measured on a chart (see the README), so that the dominant colors end up as close as possible to their target hues. The Strength limits the Saturation. Check it in PhotoLab.")
                 Spacer()
+                Text("Strength").font(.subheadline).help("How strongly the tints are applied")
                 Picker("Strength", selection: $model.gradingStrength) {
                     ForEach(ColorGradingSuggestion.Strength.allCases) { Text($0.displayName).tag($0) }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
                 .frame(width: 104)
-                .help("How strongly the tints are applied")
                 Button("Export Preset…") { model.presentExportPanel(.dxoPreset) }
                     .controlSize(.small)
                     .disabled(model.colorGrading == nil)
@@ -774,7 +825,8 @@ struct HarmonyOverlay: View {
                     let hsb = marker.color.hsb
                     // From the color's position to its target's position, along the wheel the harmony lives on.
                     let start = fit.space.position(ofRGBHue: hsb.h)
-                    let delta = ColorMath.signedAngle(from: start, to: fit.space.position(ofRGBHue: hsb.h + fit.shift(for: hsb.h)))
+                    let shift = marker.targetShift(harmony: fit) ?? 0
+                    let delta = ColorMath.signedAngle(from: start, to: fit.space.position(ofRGBHue: hsb.h + shift))
                     guard abs(delta) >= 2 else { continue }
                     let steps = max(2, Int(abs(delta) / 2))
                     for step in 0...steps {

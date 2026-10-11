@@ -5,6 +5,7 @@ import simd
 /// their own (warm highlights over cool shadows, teal and orange) or a lift (faded blacks).
 public enum GradingStyle: String, CaseIterable, Identifiable, Sendable {
     case neutral, warmHighlights, coolHighlights, tealOrange, warmOverall, coolOverall, faded
+    case complementary, monochrome, goldenHour, blueHour
 
     public var id: String { rawValue }
     public var displayName: String {
@@ -16,11 +17,15 @@ public enum GradingStyle: String, CaseIterable, Identifiable, Sendable {
         case .warmOverall: "Warm overall"
         case .coolOverall: "Cool overall"
         case .faded: "Faded (lighter shadows)"
+        case .complementary: "Complementary split (from the photo's colors)"
+        case .monochrome: "Monochrome (one hue throughout)"
+        case .goldenHour: "Golden hour (warm light, cool shade)"
+        case .blueHour: "Blue hour (deep blue, soft warmth)"
         }
     }
 
     /// sRGB hues of the casts.
-    static let coolHue = 225.0, warmHue = 35.0, tealHue = 190.0, orangeHue = 40.0
+    static let coolHue = 225.0, warmHue = 35.0, tealHue = 190.0, orangeHue = 40.0, goldenHue = 38.0, blueHourHue = 235.0
 
     /// What a style wants of a grey at the middle of a tonal range: a cast of `hue` with `scale` times the basic chroma
     /// (no hue: stay neutral), and its OKLab lightness raised by `lift`.
@@ -32,10 +37,43 @@ public enum GradingStyle: String, CaseIterable, Identifiable, Sendable {
         var lift: Float = 0
     }
 
-    var probes: [Probe] {
+    /// The sRGB hue the photo's colors lean to (weighted circular mean), which the styles that follow the photo build on.
+    static func dominantHue(of inputs: [ColorGradingSuggestion.Input]) -> Double? {
+        var s = 0.0, c = 0.0
+        for input in inputs where input.color.chroma >= DxOMapping.neutralChroma && input.share > 0 {
+            let weight = input.share * Double(min(1, input.color.chroma / 0.1))
+            let angle = input.color.hsb.h * .pi / 180
+            s += weight * sin(angle)
+            c += weight * cos(angle)
+        }
+        guard s != 0 || c != 0 else { return nil }
+        return ColorMath.normalizeDegrees(atan2(s, c) * 180 / .pi)
+    }
+
+    /// True when the casts of the style follow the photo's dominant hue instead of fixed hues.
+    var followsPhoto: Bool { self == .complementary || self == .monochrome }
+
+    func probes(dominantHue: Double?) -> [Probe] {
         let dark: Float = 0.25, mid: Float = 0.55, light: Float = 0.82
         switch self {
         case .neutral: return []
+        // The lights lean into the photo's own hue and the shadows take the opposite one; a photo without color falls back to teal & orange.
+        case .complementary:
+            let hue = dominantHue ?? Self.orangeHue
+            return [Probe(range: .shadows, lightness: dark, hue: ColorMath.normalizeDegrees(hue + 180), scale: 1.3),
+                    Probe(range: .highlights, lightness: light, hue: hue, scale: 1.3)]
+        // One hue in all ranges, kept light: it unifies the photo without turning it into a filter.
+        case .monochrome:
+            guard let hue = dominantHue else { return [] }
+            return [Probe(range: .shadows, lightness: dark, hue: hue, scale: 0.8),
+                    Probe(range: .midtones, lightness: mid, hue: hue, scale: 0.8),
+                    Probe(range: .highlights, lightness: light, hue: hue, scale: 0.8)]
+        case .goldenHour: return [Probe(range: .shadows, lightness: dark, hue: Self.coolHue, scale: 0.6),
+                                  Probe(range: .midtones, lightness: mid, hue: Self.goldenHue, scale: 0.8),
+                                  Probe(range: .highlights, lightness: light, hue: Self.goldenHue, scale: 1.5)]
+        case .blueHour: return [Probe(range: .shadows, lightness: dark, hue: Self.blueHourHue, scale: 1.5),
+                                Probe(range: .midtones, lightness: mid, hue: Self.blueHourHue, scale: 0.9),
+                                Probe(range: .highlights, lightness: light, hue: Self.warmHue, scale: 0.5)]
         case .warmHighlights: return [Probe(range: .shadows, lightness: dark, hue: Self.coolHue),
                                       Probe(range: .highlights, lightness: light, hue: Self.warmHue)]
         case .coolHighlights: return [Probe(range: .shadows, lightness: dark, hue: Self.warmHue),
@@ -60,8 +98,8 @@ public enum GradingStyle: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// The hue (sRGB degrees) the style wants for a range, nil where it has no opinion.
-    func castHue(for range: TonalRange) -> Double? {
-        probes.first { $0.range == range && $0.hue != nil }?.hue
+    func castHue(for range: TonalRange, dominantHue: Double? = nil) -> Double? {
+        probes(dominantHue: dominantHue).first { $0.range == range && $0.hue != nil }?.hue
     }
 
     /// How much the style counts against the hue fit of the colors. An overall cast is the point of its style: a photo
@@ -72,7 +110,7 @@ public enum GradingStyle: String, CaseIterable, Identifiable, Sendable {
     var usesMaster: Bool { self == .warmOverall || self == .coolOverall }
 
     /// The ranges the style has an opinion about.
-    var ranges: Set<TonalRange> { Set(probes.map(\.range)) }
+    func ranges(dominantHue: Double? = nil) -> Set<TonalRange> { Set(probes(dominantHue: dominantHue).map(\.range)) }
 
     /// True when the style lifts the darks, which it does with the Blacks and Shadows sliders of the Light palette.
     var usesTone: Bool { self == .faded }
@@ -86,13 +124,14 @@ extension ColorGradingSuggestion {
     /// is never worse than it by this measure.
     public static func optimized(from inputs: [Input], strength: Strength, style: GradingStyle = .neutral) -> Suggestion {
         let seed = suggest(from: inputs, strength: strength)
+        let dominant = style.followsPhoto ? GradingStyle.dominantHue(of: inputs) : nil
         let problem = GradingProblem(inputs: inputs, cap: strength.maxSaturation, style: style)
         guard !problem.items.isEmpty || style != .neutral else { return seed }   // nothing with a hue to aim at
 
         // Ranges that have colors with a hue can be tinted, and those the style has an opinion about; the others stay as they are.
         var active = seed.details.enumerated().filter { $0.element.reason == .tinted || $0.element.reason == .onTarget }.map(\.offset)
         for (index, range) in [TonalRange.shadows, .midtones, .highlights].enumerated()
-        where style.ranges.contains(range) && !active.contains(index) { active.append(index) }
+        where style.ranges(dominantHue: dominant).contains(range) && !active.contains(index) { active.append(index) }
         active.sort()
         guard !active.isEmpty else { return seed }
 
@@ -103,7 +142,7 @@ extension ColorGradingSuggestion {
         }
         seedParameters += [0, 0, 0, 0, 0]   // Balance, Hue and Saturation of Master, Blacks and Shadows of the Light palette
         var gentle = [Double](repeating: 0, count: GradingProblem.parameterCount)
-        if style.usesMaster, let hue = style.probes.first?.hue {
+        if style.usesMaster, let hue = style.probes(dominantHue: dominant).first?.hue {
             // The Master wheel carries the cast of the whole photo: first find what it takes on its own (without the ranges,
             // which would only cancel part of it), then let the ranges adjust the colors on top.
             var start = [Double](repeating: 0, count: GradingProblem.parameterCount)
@@ -113,7 +152,7 @@ extension ColorGradingSuggestion {
             gentle[10] = master[10]; gentle[11] = master[11]
         }
         for r in active {
-            let styled = style.castHue(for: tonalRange(at: r)).map { DxOHue.fromSRGB($0) }
+            let styled = style.castHue(for: tonalRange(at: r), dominantHue: dominant).map { DxOHue.fromSRGB($0) }
             gentle[3 * r] = problem.meanTargetHue(range: tonalRange(at: r)) ?? styled ?? seedParameters[3 * r]
             gentle[3 * r + 1] = strength.maxSaturation / 3
         }
@@ -222,7 +261,7 @@ struct GradingProblem {
         var probes: [(linear: SIMD3<Float>, lab: SIMD3<Float>, target: SIMD2<Float>, lift: Float)] = []
         // A cast of this chroma is clearly visible without being a color filter; it scales with the strength.
         let chroma = Float(0.012 * cap / 30)
-        for probe in style.probes {
+        for probe in style.probes(dominantHue: style.followsPhoto ? GradingStyle.dominantHue(of: inputs) : nil) {
             var target = SIMD2<Float>.zero
             if let hue = probe.hue {
                 // The OKLab angle of the pure color with this sRGB hue is the direction the cast has to take.

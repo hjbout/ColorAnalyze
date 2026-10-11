@@ -131,6 +131,18 @@ extension AnalysisModel {
         refreshPreview()
     }
 
+    /// True when the targets on the wheel can be dragged: they are predictions of a grading that aims at hues, not a loaded
+    /// graded version, and not the plain strengthening of the existing tints.
+    var canEditTargets: Bool { afterImage == nil && effectiveGradingTarget != .emphasize }
+
+    /// Aims a color at `hue` (sRGB degrees) instead of at its automatic target, or back at the automatic one with nil.
+    func setTargetHue(_ hue: Double?, for id: Marker.ID) {
+        guard let i = markers.firstIndex(where: { $0.id == id }), markers[i].targetHue != hue else { return }
+        markers[i].targetHue = hue
+        isDirty = true
+        refreshPreview()
+    }
+
     func isAutomaticallyProtected(_ marker: Marker) -> Bool {
         protectSkin && SkinTone.offset(of: marker.color) != nil
     }
@@ -142,7 +154,7 @@ extension AnalysisModel {
 
     /// Why a color is protected, for the list; nil when it is not.
     func protectionNote(for marker: Marker) -> String? {
-        guard isProtected(marker) else { return nil }
+        guard isProtected(marker), marker.targetHue == nil else { return nil }
         if marker.protection == true { return "Kept as it is: the suggestions do not aim it at the harmony" }
         return "Skin tone, kept as it is: the suggestions do not aim it at the harmony"
     }

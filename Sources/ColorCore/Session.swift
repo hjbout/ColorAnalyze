@@ -15,8 +15,11 @@ public struct Session: Codable, Sendable, Equatable {
         public var hex: String
         /// True for a color the grading suggestions should leave alone; nil (absent) = not protected.
         public var isProtected: Bool?
+        /// sRGB hue the color was aimed at by hand; nil = the automatic target.
+        public var targetHue: Double?
 
-        public init(x: Double, y: Double, hex: String, isProtected: Bool? = nil) {
+        public init(x: Double, y: Double, hex: String, isProtected: Bool? = nil, targetHue: Double? = nil) {
+            self.targetHue = targetHue
             self.x = x
             self.y = y
             self.hex = hex

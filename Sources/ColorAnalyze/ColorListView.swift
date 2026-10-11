@@ -28,10 +28,12 @@ struct ColorListView: View {
                     ColorRow(number: index + 1, marker: marker, protectionNote: model.protectionNote(for: marker), harmony: fit,
                              after: model.afterColor(for: marker), series: model.seriesInfo(for: marker), referenceTitle: model.referenceTitle, afterLabel: model.afterLabel)
                         .tag(marker.id)
+                        // The whole row is the click target, also its empty parts and the text.
+                        .contentShape(Rectangle())
                         .onHover { model.hover(marker.id, inside: $0) }
-                        // A plain click on the selected color deselects it, like a command-click.
+                        // A click selects the color; a plain click on the selected color deselects it, like a command-click.
                         .simultaneousGesture(TapGesture().onEnded {
-                            if model.selectionAtMouseDown == marker.id { model.selectedMarkerID = nil }
+                            model.selectedMarkerID = model.selectionAtMouseDown == marker.id ? nil : marker.id
                         })
                         .contextMenu {
                             Button("Copy Hex") { copy(marker.color.hex) }
@@ -156,8 +158,7 @@ private struct ColorRow: View {
                         Text(protectionNote)
                             .foregroundStyle(.orange)
                     }
-                } else if let harmony, channel != .neutral {
-                    let shift = harmony.shift(for: color.hsb.h)
+                } else if let shift = marker.targetShift(harmony: harmony), channel != .neutral {
                     GridRow {
                         Text("Harmony").foregroundStyle(.secondary)
                         Text(shiftDescription(hue: color.hsb.h, shift: shift, channel: channel))
@@ -188,8 +189,8 @@ private struct ColorRow: View {
                     .font(.system(.caption, design: .monospaced).weight(.semibold))
                 Text("Δ hue \(hueText) · sat \(signedRounded((a.s - b.s) * 100, unit: "%")) · L* \(signedRounded(after.lightness - before.lightness))")
                     .font(.caption)
-                if let harmony, chromatic {
-                    let was = harmony.shift(for: before.hsb.h), now = harmony.shift(for: after.hsb.h)
+                if let was = marker.targetShift(fromHue: before.hsb.h, harmony: harmony),
+                   let now = marker.targetShift(fromHue: after.hsb.h, harmony: harmony), chromatic {
                     Text("Harmony shift \(signedRounded(was, unit: "°")) → \(signedRounded(now, unit: "°"))")
                         .font(.caption)
                         .foregroundStyle(abs(now) < abs(was) - 0.5 ? .green : abs(now) > abs(was) + 0.5 ? .red : .secondary)

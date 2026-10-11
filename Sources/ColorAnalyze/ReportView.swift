@@ -327,8 +327,7 @@ private struct ReportRow: View {
                     Text("Skin tone: in range (\(SkinTone.describe(offset: offset)))")
                         .font(.system(size: 12))
                 }
-                if let harmony, channel != .neutral {
-                    let shift = harmony.shift(for: color.hsb.h)
+                if let shift = marker.targetShift(harmony: harmony), channel != .neutral {
                     Text(abs(shift) < 3
                          ? "Harmony: on target (\(Int(color.hsb.h.rounded()))°)"
                          : "Harmony: hue \(signedRounded(shift, unit: "°")) → \(Int(ColorMath.normalizeDegrees(color.hsb.h + shift).rounded()))°")
@@ -365,8 +364,8 @@ private struct ReportRow: View {
                     .frame(width: 14, height: 14)
                 Text("After \(after.hex) · Δ hue \(hue) · sat \(signedRounded((a.s - b.s) * 100, unit: "%")) · L* \(signedRounded(after.lightness - before.lightness))")
                     .font(.system(size: 12))
-                if let harmony, chromatic {
-                    let was = harmony.shift(for: before.hsb.h), now = harmony.shift(for: after.hsb.h)
+                if let was = marker.targetShift(fromHue: before.hsb.h, harmony: harmony),
+                   let now = marker.targetShift(fromHue: after.hsb.h, harmony: harmony), chromatic {
                     Text("→ \(signedRounded(was, unit: "°")) to \(signedRounded(now, unit: "°"))")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(abs(now) < abs(was) - 0.5 ? .green : abs(now) > abs(was) + 0.5 ? .red : .secondary)
