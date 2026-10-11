@@ -82,7 +82,7 @@ extension AnalysisModel {
         var inputs: [ColorGradingSuggestion.Input] = []
         switch effectiveGradingTarget {
         case .emphasize:
-            return ColorGradingSuggestion.emphasize(markers.map { ($0.color, $0.share) }, strength: gradingStrength)
+            return ColorGradingSuggestion.optimizedEmphasis(markers.map { ($0.color, $0.share) }, strength: gradingStrength, style: gradingStyle)
         case .harmony:
             guard let fit = harmony else { return nil }
             inputs = markers.map {

@@ -123,10 +123,24 @@ extension ColorGradingSuggestion {
     /// the saturation stays within the strength. The plain heuristic (`suggest`) is the starting point, so the result
     /// is never worse than it by this measure.
     public static func optimized(from inputs: [Input], strength: Strength, style: GradingStyle = .neutral) -> Suggestion {
-        let seed = suggest(from: inputs, strength: strength)
+        refine(seed: suggest(from: inputs, strength: strength), inputs: inputs, strength: strength, style: style,
+               problem: GradingProblem(inputs: inputs, cap: strength.maxSaturation, style: style), emphasizing: false)
+    }
+
+    /// For photos without real colors (`emphasize` is the heuristic): the faint tint of each color is made stronger, at the same
+    /// hue, and the calibrated model finds the Hue and Saturation of the wheels that render it so. Unlike the heuristic it
+    /// allows for PhotoLab tinting per channel in a wide-gamut space, and it takes a style.
+    public static func optimizedEmphasis(_ colors: [(color: SRGBColor, share: Double)], strength: Strength,
+                                         style: GradingStyle = .neutral) -> Suggestion {
+        let inputs = colors.map { Input(color: $0.color, share: $0.share, targetHue: $0.color.hsb.h) }
+        return refine(seed: emphasize(colors, strength: strength), inputs: inputs, strength: strength, style: style,
+                      problem: GradingProblem(emphasizing: inputs, cap: strength.maxSaturation, style: style), emphasizing: true)
+    }
+
+    private static func refine(seed: Suggestion, inputs: [Input], strength: Strength, style: GradingStyle,
+                               problem: GradingProblem, emphasizing: Bool) -> Suggestion {
         let dominant = style.followsPhoto ? GradingStyle.dominantHue(of: inputs) : nil
-        let problem = GradingProblem(inputs: inputs, cap: strength.maxSaturation, style: style)
-        guard !problem.items.isEmpty || style != .neutral else { return seed }   // nothing with a hue to aim at
+        guard problem.hasTargets || style != .neutral else { return seed }   // nothing with a hue to aim at
 
         // Ranges that have colors with a hue can be tinted, and those the style has an opinion about; the others stay as they are.
         var active = seed.details.enumerated().filter { $0.element.reason == .tinted || $0.element.reason == .onTarget }.map(\.offset)
@@ -153,7 +167,7 @@ extension ColorGradingSuggestion {
         }
         for r in active {
             let styled = style.castHue(for: tonalRange(at: r), dominantHue: dominant).map { DxOHue.fromSRGB($0) }
-            gentle[3 * r] = problem.meanTargetHue(range: tonalRange(at: r)) ?? styled ?? seedParameters[3 * r]
+            gentle[3 * r] = problem.meanTargetHue(range: tonalRange(at: r)) ?? (emphasizing ? nil : styled) ?? seedParameters[3 * r]
             gentle[3 * r + 1] = strength.maxSaturation / 3
         }
         let zero = [Double](repeating: 0, count: GradingProblem.parameterCount)
@@ -211,14 +225,14 @@ extension ColorGradingSuggestion {
                 detail.tintHue = x[3 * r + 1] > 0 ? DxOHue.toSRGB(Double(wheel.hue)) : nil
             } else {
                 detail.tintHue = nil
-                if detail.reason == .tinted { detail.reason = .onTarget }
+                if detail.reason == .tinted { detail.reason = emphasizing ? .tooNeutral : .onTarget }
             }
             details.append(detail)
         }
         preset.balance = Int(x[9])
         if x[11] > 0 { preset.master = ColorGradingPreset.Wheel(hue: Int(x[10]), saturation: Int(x[11]), luminance: 0) }
         let (before, after) = problem.meanErrors(x)
-        var suggestion = Suggestion(preset: preset, details: details, fit: Fit(before: before, after: after))
+        var suggestion = Suggestion(preset: preset, details: details, fit: emphasizing ? nil : Fit(before: before, after: after))
         suggestion.toneBlacks = Int(x[12])
         suggestion.toneShadows = Int(x[13])
         return suggestion
@@ -256,7 +270,36 @@ struct GradingProblem {
     let totalWeight: Double
     let cap: Double
 
-    init(inputs: [ColorGradingSuggestion.Input], cap: Double, style: GradingStyle = .neutral) {
+    /// A faint color (too little chroma for a hue to aim at) and the stronger version of itself it should become.
+    struct Faint {
+        var linear: SIMD3<Float>
+        var lab: SIMD3<Float>
+        var target: SIMD2<Float>
+        var weight: Double
+    }
+    /// Only set when emphasizing the tints of the photo; `items` is then empty.
+    private(set) var faint: [Faint] = []
+    private(set) var faintWeight = 0.0
+    var hasTargets: Bool { !items.isEmpty || !faint.isEmpty }
+
+    /// Emphasizing: colors with a tint worth strengthening aim at the same hue with more chroma, as much as a style's basic cast.
+    init(emphasizing inputs: [ColorGradingSuggestion.Input], cap: Double, style: GradingStyle = .neutral) {
+        self.init(inputs: inputs.filter { $0.color.chroma < ColorGradingSuggestion.emphasisMinimumChroma }, cap: cap, style: style, hueItems: false)
+        let boost = Float(0.012 * cap / 30)
+        var faint: [Faint] = []
+        for input in inputs where input.color.chroma >= ColorGradingSuggestion.emphasisMinimumChroma && input.share > 0 {
+            let linear = input.color.linear
+            let lab = ColorMath.linearToOKLab(linear)
+            let chroma = (lab.y * lab.y + lab.z * lab.z).squareRoot()
+            guard chroma > 0 else { continue }
+            let weight = input.share * Double(min(1, input.color.chroma / ColorGradingSuggestion.emphasisTypicalChroma))
+            faint.append(Faint(linear: linear, lab: lab, target: SIMD2(lab.y, lab.z) / chroma * (chroma + boost), weight: weight))
+        }
+        self.faint = faint
+        self.faintWeight = faint.reduce(0) { $0 + $1.weight }
+    }
+
+    init(inputs: [ColorGradingSuggestion.Input], cap: Double, style: GradingStyle = .neutral, hueItems: Bool = true) {
         self.style = style
         var probes: [(linear: SIMD3<Float>, lab: SIMD3<Float>, target: SIMD2<Float>, lift: Float)] = []
         // A cast of this chroma is clearly visible without being a color filter; it scales with the strength.
@@ -280,7 +323,7 @@ struct GradingProblem {
             neutrals.append((linear, ColorMath.linearToOKLab(linear), input.share))
         }
         self.neutrals = neutrals
-        for input in inputs where input.color.chroma >= DxOMapping.neutralChroma {
+        for input in inputs where hueItems && input.color.chroma >= DxOMapping.neutralChroma {
             let weight = input.share * min(1, input.color.chroma / 0.1)
             guard weight > 0 else { continue }
             let linear = input.color.linear
@@ -337,8 +380,15 @@ struct GradingProblem {
             let cast = Double((lab.y * lab.y + lab.z * lab.z).squareRoot()) / 0.03
             total += neutral.weight * 0.5 * cast * cast
         }
+        // Emphasizing: each faint color should end up with the stronger tint, and keep its lightness.
+        for color in faint {
+            let lab = ColorMath.linearToOKLab(plan.applyLinear(linear: color.linear, lab: color.lab))
+            let miss = Double(simd_length(SIMD2(lab.y, lab.z) - color.target)) / 0.02
+            let dLight = Double(lab.x - color.lab.x) / 0.1
+            total += color.weight * (miss * miss + 0.5 * dLight * dLight)
+        }
         // The style: the greys of the shadows and of the highlights should take on their cast.
-        let styleWeight = max(totalWeight, 0.5)
+        let styleWeight = max(totalWeight + faintWeight, 0.5)
         for probe in probes {
             let lab = ColorMath.linearToOKLab(plan.applyLinear(linear: probe.linear, lab: probe.lab))
             let miss = Double(simd_length(SIMD2(lab.y, lab.z) - probe.target)) / 0.03
@@ -349,7 +399,7 @@ struct GradingProblem {
         for r in 0..<3 { regularization += pow(x[3 * r + 1] / max(cap, 1), 2) + 2 * pow(x[3 * r + 2] / max(cap, 1), 2) }
         regularization += 2 * pow(x[9] / Self.maximumBalance, 2) + pow(x[11] / max(cap, 1), 2)
         regularization += 0.5 * (pow(x[12] / Self.maximumTone(cap), 2) + pow(x[13] / Self.maximumTone(cap), 2))
-        return total + 0.02 * totalWeight * regularization
+        return total + 0.02 * (totalWeight + faintWeight) * regularization
     }
 
     /// Weighted mean hue distance to the targets, before any grading and with the grading `x`.

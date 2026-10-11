@@ -1270,6 +1270,35 @@ import Testing
         #expect(result.details.allSatisfy { $0.reason == .tooNeutral || $0.reason == .noColors })
     }
 
+    @Test func optimizedTintsRenderStrongerTintsAtTheSameHue() throws {
+        let sky = Self.faint(hue: 215, brightness: 0.85)
+        let dusk = Self.faint(hue: 300, brightness: 0.10, saturation: 0.6)
+        let colors = [(sky, 0.5), (dusk, 0.3)]
+        let result = ColorGradingSuggestion.optimizedEmphasis(colors, strength: .moderate)
+        #expect(result.details.first { $0.range == .highlights }?.reason == .tinted)
+        #expect(result.preset.highlights.saturation > 0)
+        // Rendered with the model, the sky keeps its hue (within 25°) and gains chroma.
+        let settings = GradePreviewSettings(
+            shadows: .init(dxoHue: Double(result.preset.shadows.hue), saturation: Double(result.preset.shadows.saturation), luminance: 0),
+            midtones: .init(dxoHue: 0, saturation: 0, luminance: 0),
+            highlights: .init(dxoHue: Double(result.preset.highlights.hue), saturation: Double(result.preset.highlights.saturation), luminance: 0),
+            master: .init(dxoHue: 0, saturation: 0), balance: 0, toneBlacks: 0, toneShadows: 0)
+        let plan = GradePreview.Plan(settings)
+        let before = ColorMath.linearToOKLab(sky.linear)
+        let after = ColorMath.linearToOKLab(plan.applyLinear(linear: sky.linear, lab: before))
+        #expect((after.y * after.y + after.z * after.z) > (before.y * before.y + before.z * before.z))
+        let hueBefore = SRGBColor(linear: sky.linear).hsb.h
+        let hueAfter = SRGBColor(linear: plan.applyLinear(linear: sky.linear, lab: before)).clamped.hsb.h
+        #expect(abs(ColorMath.signedAngle(from: hueBefore, to: hueAfter)) < 25)
+    }
+
+    @Test func optimizedTintsLeaveGreyPhotosAloneAndTakeAStyle() {
+        let grey = [(SRGBColor(r: 0.5, g: 0.5, b: 0.5), 0.6), (SRGBColor(r: 0.1, g: 0.1, b: 0.1), 0.4)]
+        #expect(ColorGradingSuggestion.optimizedEmphasis(grey, strength: .strong).preset == ColorGradingPreset())
+        let styled = ColorGradingSuggestion.optimizedEmphasis(grey, strength: .moderate, style: .warmOverall)
+        #expect(styled.preset != ColorGradingPreset())
+    }
+
     @Test func reasonsExplainWhyARangeIsLeftAlone() {
         let onTarget = ColorGradingSuggestion.Input(color: SRGBColor.fromHSB(h: 60, s: 0.7, b: 0.95), share: 0.5, targetHue: 61)
         let result = ColorGradingSuggestion.suggest(from: [onTarget], strength: .moderate)

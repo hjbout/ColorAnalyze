@@ -463,15 +463,14 @@ struct ColorWheelView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                Text("Style").help("A creative direction on top of the harmony: the greys of the shadows and highlights take on a cast of their own, such as warm highlights over cool shadows. Not available when only the existing tints are strengthened.")
+                Text("Style").help("A creative direction on top of the harmony: the greys of the shadows and highlights take on a cast of their own, such as warm highlights over cool shadows.")
                 Picker("Style", selection: $model.gradingStyle) {
                     ForEach(GradingStyle.allCases) { Text($0.displayName).tag($0) }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
             }
-            .disabled(model.effectiveGradingTarget == .emphasize)
-            if let hint = model.intentionStyle, model.effectiveGradingTarget != .emphasize {
+            if let hint = model.intentionStyle {
                 HStack(spacing: 6) {
                     Image(systemName: "lightbulb")
                         .foregroundStyle(.secondary)
