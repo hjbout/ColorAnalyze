@@ -36,7 +36,20 @@ cat > "$APP/Contents/Info.plist" <<PLIST
             <key>CFBundleTypeRole</key><string>Viewer</string>
             <key>LSHandlerRank</key><string>Alternate</string>
             <key>LSItemContentTypes</key>
-            <array><string>public.image</string></array>
+            <array>
+                <string>public.tiff</string>
+                <string>public.jpeg</string>
+                <string>public.png</string>
+                <string>public.heic</string>
+                <string>public.camera-raw-image</string>
+                <string>public.image</string>
+            </array>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>tif</string><string>tiff</string><string>jpg</string><string>jpeg</string>
+                <string>png</string><string>heic</string><string>arw</string><string>dng</string>
+                <string>cr2</string><string>cr3</string><string>nef</string><string>raf</string>
+            </array>
         </dict>
     </array>
 </dict>
