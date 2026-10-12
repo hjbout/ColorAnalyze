@@ -190,6 +190,11 @@ final class AnalysisModel {
         didSet { if gradingStyle != oldValue { remember(gradingStyle.rawValue, as: "gradingStyle") } }
     }
 
+    /// How strongly the style is applied: 0 (none) to 2 (twice as designed), 1 as designed. Remembered.
+    var gradingStyleAmount = AnalysisModel.remembered("gradingStyleAmount") ?? 1.0 {
+        didSet { if gradingStyleAmount != oldValue { remember(gradingStyleAmount, as: "gradingStyleAmount") } }
+    }
+
     var gradingTarget = GradingTarget.harmony
 
     @ObservationIgnored var gradingCache: (key: Int, grading: ColorGradingSuggestion.Suggestion?)?

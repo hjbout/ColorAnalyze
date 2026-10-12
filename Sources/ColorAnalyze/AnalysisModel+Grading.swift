@@ -30,6 +30,9 @@ extension AnalysisModel {
         return suggestion
     }
 
+    /// The style the grading really uses: none at an amount of 0.
+    var appliedStyle: GradingStyle { gradingStyleAmount > 0 ? gradingStyle : .neutral }
+
     /// Where the grading really aims: the series palette only when it is available and shown, and the
     /// existing tints when there is no harmony to aim at (a photo of fog, dusk or in black and white).
     var effectiveGradingTarget: GradingTarget {
@@ -70,6 +73,7 @@ extension AnalysisModel {
         hasher.combine(harmonySector.rawValue)
         hasher.combine(gradingStrength.rawValue)
         hasher.combine(gradingStyle.rawValue)
+        hasher.combine(gradingStyleAmount)
         hasher.combine(gradingTarget.rawValue)
         hasher.combine(isSeriesReferenceShown)
         hasher.combine(referencePhoto?.url.path)
@@ -82,7 +86,7 @@ extension AnalysisModel {
         var inputs: [ColorGradingSuggestion.Input] = []
         switch effectiveGradingTarget {
         case .emphasize:
-            return ColorGradingSuggestion.optimizedEmphasis(markers.map { ($0.color, $0.share) }, strength: gradingStrength, style: gradingStyle)
+            return ColorGradingSuggestion.optimizedEmphasis(markers.map { ($0.color, $0.share) }, strength: gradingStrength, style: appliedStyle, styleAmount: gradingStyleAmount)
         case .harmony:
             guard let fit = harmony else { return nil }
             inputs = markers.map {
@@ -104,7 +108,7 @@ extension AnalysisModel {
                 }
             }
         }
-        return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: gradingStyle)
+        return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: appliedStyle, styleAmount: gradingStyleAmount)
     }
 
     /// Per channel of PhotoLab's HSL tool, how far its Hue handle should turn (degrees on PhotoLab's ring;

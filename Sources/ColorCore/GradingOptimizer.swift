@@ -122,19 +122,20 @@ extension ColorGradingSuggestion {
     /// as close as possible to the hues they should have — while a color keeps its lightness and most of its chroma and
     /// the saturation stays within the strength. The plain heuristic (`suggest`) is the starting point, so the result
     /// is never worse than it by this measure.
-    public static func optimized(from inputs: [Input], strength: Strength, style: GradingStyle = .neutral) -> Suggestion {
+    public static func optimized(from inputs: [Input], strength: Strength, style: GradingStyle = .neutral,
+                                 styleAmount: Double = 1) -> Suggestion {
         refine(seed: suggest(from: inputs, strength: strength), inputs: inputs, strength: strength, style: style,
-               problem: GradingProblem(inputs: inputs, cap: strength.maxSaturation, style: style), emphasizing: false)
+               problem: GradingProblem(inputs: inputs, cap: strength.maxSaturation, style: style, styleAmount: styleAmount), emphasizing: false)
     }
 
     /// For photos without real colors (`emphasize` is the heuristic): the faint tint of each color is made stronger, at the same
     /// hue, and the calibrated model finds the Hue and Saturation of the wheels that render it so. Unlike the heuristic it
     /// allows for PhotoLab tinting per channel in a wide-gamut space, and it takes a style.
     public static func optimizedEmphasis(_ colors: [(color: SRGBColor, share: Double)], strength: Strength,
-                                         style: GradingStyle = .neutral) -> Suggestion {
+                                         style: GradingStyle = .neutral, styleAmount: Double = 1) -> Suggestion {
         let inputs = colors.map { Input(color: $0.color, share: $0.share, targetHue: $0.color.hsb.h) }
         return refine(seed: emphasize(colors, strength: strength), inputs: inputs, strength: strength, style: style,
-                      problem: GradingProblem(emphasizing: inputs, cap: strength.maxSaturation, style: style), emphasizing: true)
+                      problem: GradingProblem(emphasizing: inputs, cap: strength.maxSaturation, style: style, styleAmount: styleAmount), emphasizing: true)
     }
 
     private static func refine(seed: Suggestion, inputs: [Input], strength: Strength, style: GradingStyle,
@@ -283,8 +284,9 @@ struct GradingProblem {
     var hasTargets: Bool { !items.isEmpty || !faint.isEmpty }
 
     /// Emphasizing: colors with a tint worth strengthening aim at the same hue with more chroma, as much as a style's basic cast.
-    init(emphasizing inputs: [ColorGradingSuggestion.Input], cap: Double, style: GradingStyle = .neutral) {
-        self.init(inputs: inputs.filter { $0.color.chroma < ColorGradingSuggestion.emphasisMinimumChroma }, cap: cap, style: style, hueItems: false)
+    init(emphasizing inputs: [ColorGradingSuggestion.Input], cap: Double, style: GradingStyle = .neutral, styleAmount: Double = 1) {
+        self.init(inputs: inputs.filter { $0.color.chroma < ColorGradingSuggestion.emphasisMinimumChroma }, cap: cap, style: style,
+                  styleAmount: styleAmount, hueItems: false)
         let boost = Float(0.012 * cap / 30)
         var faint: [Faint] = []
         for input in inputs where input.color.chroma >= ColorGradingSuggestion.emphasisMinimumChroma && input.share > 0 {
@@ -299,7 +301,8 @@ struct GradingProblem {
         self.faintWeight = faint.reduce(0) { $0 + $1.weight }
     }
 
-    init(inputs: [ColorGradingSuggestion.Input], cap: Double, style: GradingStyle = .neutral, hueItems: Bool = true) {
+    /// `styleAmount` scales the style's cast and lift: 0 is no style, 1 as designed, 2 twice as strong.
+    init(inputs: [ColorGradingSuggestion.Input], cap: Double, style: GradingStyle = .neutral, styleAmount: Double = 1, hueItems: Bool = true) {
         self.style = style
         var probes: [(linear: SIMD3<Float>, lab: SIMD3<Float>, target: SIMD2<Float>, lift: Float)] = []
         // A cast of this chroma is clearly visible without being a color filter; it scales with the strength.
@@ -310,10 +313,10 @@ struct GradingProblem {
                 // The OKLab angle of the pure color with this sRGB hue is the direction the cast has to take.
                 let pure = SRGBColor.fromHSB(h: hue, s: 1, b: 1).oklab
                 let length = (pure.y * pure.y + pure.z * pure.z).squareRoot()
-                target = SIMD2(pure.y, pure.z) / length * chroma * probe.scale
+                target = SIMD2(pure.y, pure.z) / length * chroma * probe.scale * Float(styleAmount)
             }
             let lab = SIMD3<Float>(probe.lightness, 0, 0)
-            probes.append((ColorMath.okLabToLinear(lab), lab, target, probe.lift * Float(min(1, cap / 30))))
+            probes.append((ColorMath.okLabToLinear(lab), lab, target, probe.lift * Float(min(1, cap / 30)) * Float(styleAmount)))
         }
         self.probes = probes
         var items: [Item] = []
