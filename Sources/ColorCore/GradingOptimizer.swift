@@ -123,23 +123,24 @@ extension ColorGradingSuggestion {
     /// the saturation stays within the strength. The plain heuristic (`suggest`) is the starting point, so the result
     /// is never worse than it by this measure.
     public static func optimized(from inputs: [Input], strength: Strength, style: GradingStyle = .neutral,
-                                 styleAmount: Double = 1) -> Suggestion {
+                                 styleAmount: Double = 1, scale: Double = 1) -> Suggestion {
         refine(seed: suggest(from: inputs, strength: strength), inputs: inputs, strength: strength, style: style,
-               problem: GradingProblem(inputs: inputs, cap: strength.maxSaturation, style: style, styleAmount: styleAmount), emphasizing: false)
+               problem: GradingProblem(inputs: inputs, cap: strength.maxSaturation, style: style, styleAmount: styleAmount), emphasizing: false, scale: scale)
     }
 
     /// For photos without real colors (`emphasize` is the heuristic): the faint tint of each color is made stronger, at the same
     /// hue, and the calibrated model finds the Hue and Saturation of the wheels that render it so. Unlike the heuristic it
     /// allows for PhotoLab tinting per channel in a wide-gamut space, and it takes a style.
     public static func optimizedEmphasis(_ colors: [(color: SRGBColor, share: Double)], strength: Strength,
-                                         style: GradingStyle = .neutral, styleAmount: Double = 1) -> Suggestion {
+                                         style: GradingStyle = .neutral, styleAmount: Double = 1,
+                                         scale: Double = 1) -> Suggestion {
         let inputs = colors.map { Input(color: $0.color, share: $0.share, targetHue: $0.color.hsb.h) }
         return refine(seed: emphasize(colors, strength: strength), inputs: inputs, strength: strength, style: style,
-                      problem: GradingProblem(emphasizing: inputs, cap: strength.maxSaturation, style: style, styleAmount: styleAmount), emphasizing: true)
+                      problem: GradingProblem(emphasizing: inputs, cap: strength.maxSaturation, style: style, styleAmount: styleAmount), emphasizing: true, scale: scale)
     }
 
     private static func refine(seed: Suggestion, inputs: [Input], strength: Strength, style: GradingStyle,
-                               problem: GradingProblem, emphasizing: Bool) -> Suggestion {
+                               problem: GradingProblem, emphasizing: Bool, scale: Double) -> Suggestion {
         let dominant = style.followsPhoto ? GradingStyle.dominantHue(of: inputs) : nil
         guard problem.hasTargets || style != .neutral else { return seed }   // nothing with a hue to aim at
 
@@ -186,7 +187,7 @@ extension ColorGradingSuggestion {
         }
 
         // Whole numbers, like PhotoLab's fields.
-        var x = best.x
+        func roundWhole(_ x: inout [Double]) {
         for r in 0..<3 {
             x[3 * r] = (x[3 * r].rounded().truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)
             x[3 * r + 1] = x[3 * r + 1].rounded()
@@ -203,9 +204,24 @@ extension ColorGradingSuggestion {
             x[index] = x[index].rounded()
             if abs(x[index]) < 1 { x[index] = 0 }
         }
+        }
+        var x = best.x
+        roundWhole(&x)
         let finalCost = problem.cost(x)
         let baseline = problem.cost(zero)
         if finalCost > baseline * 0.99 { x = zero }   // not worth a tint
+        // The whole grading applied less or more than found (the amount slider with the Neutral style).
+        if scale != 1 {
+            for r in 0..<3 {
+                x[3 * r + 1] = min(100, x[3 * r + 1] * scale)
+                x[3 * r + 2] = max(-100, min(100, x[3 * r + 2] * scale))
+            }
+            x[9] = max(-100, min(100, x[9] * scale))
+            x[11] = min(100, x[11] * scale)
+            x[12] *= scale
+            x[13] *= scale
+            roundWhole(&x)
+        }
 
         var preset = ColorGradingPreset()
         var details: [RangeDetail] = []

@@ -470,9 +470,9 @@ struct ColorWheelView: View {
                 .pickerStyle(.menu)
                 .labelsHidden()
             }
-            if model.gradingStyle != .neutral {
+            do {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Amount:").help("How strongly the style is applied: 1 as designed, 0 none, 2 twice as strong. The suggested tints, the target markers and the PhotoLab values follow.")
+                    Text("Amount:").help("How strongly the style is applied: 1 as designed, 0 none, 2 twice as strong. With the Neutral style it scales the whole grading, the hue turns included. The suggested tints, the target markers and the PhotoLab values follow.")
                     HStack(spacing: 8) {
                         ResettableSlider(value: $model.gradingStyleAmount, range: 0...2, resetValue: 1)
                             .help("Double-click to return to 1")

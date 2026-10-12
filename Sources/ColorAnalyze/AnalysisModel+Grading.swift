@@ -33,6 +33,10 @@ extension AnalysisModel {
     /// The style the grading really uses: none at an amount of 0.
     var appliedStyle: GradingStyle { gradingStyleAmount > 0 ? gradingStyle : .neutral }
 
+    /// With a style the amount scales the style's cast; with Neutral it scales the whole grading.
+    var styleCastAmount: Double { gradingStyle == .neutral ? 1 : gradingStyleAmount }
+    var gradingScale: Double { gradingStyle == .neutral ? gradingStyleAmount : 1 }
+
     /// Where the grading really aims: the series palette only when it is available and shown, and the
     /// existing tints when there is no harmony to aim at (a photo of fog, dusk or in black and white).
     var effectiveGradingTarget: GradingTarget {
@@ -86,7 +90,7 @@ extension AnalysisModel {
         var inputs: [ColorGradingSuggestion.Input] = []
         switch effectiveGradingTarget {
         case .emphasize:
-            return ColorGradingSuggestion.optimizedEmphasis(markers.map { ($0.color, $0.share) }, strength: gradingStrength, style: appliedStyle, styleAmount: gradingStyleAmount)
+            return ColorGradingSuggestion.optimizedEmphasis(markers.map { ($0.color, $0.share) }, strength: gradingStrength, style: appliedStyle, styleAmount: styleCastAmount, scale: gradingScale)
         case .harmony:
             guard let fit = harmony else { return nil }
             inputs = markers.map {
@@ -108,7 +112,7 @@ extension AnalysisModel {
                 }
             }
         }
-        return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: appliedStyle, styleAmount: gradingStyleAmount)
+        return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: appliedStyle, styleAmount: styleCastAmount, scale: gradingScale)
     }
 
     /// Per channel of PhotoLab's HSL tool, how far its Hue handle should turn (degrees on PhotoLab's ring;
@@ -124,7 +128,7 @@ extension AnalysisModel {
             case .series: seriesMatch(for: marker)?.hueShift
             case .emphasize: nil
             }
-            let shift = aim == .emphasize ? nil : marker.manualShift() ?? (isProtected(marker) ? nil : target)
+            let shift = (aim == .emphasize ? nil : marker.manualShift() ?? (isProtected(marker) ? nil : target)).map { $0 * gradingScale }
             return HSLSuggestion.Input(number: index + 1, color: marker.color, share: marker.share, hueShift: shift)
         })
     }
