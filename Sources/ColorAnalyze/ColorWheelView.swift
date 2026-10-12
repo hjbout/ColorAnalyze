@@ -471,14 +471,16 @@ struct ColorWheelView: View {
                 .labelsHidden()
             }
             if model.gradingStyle != .neutral {
-                HStack {
-                    Text("Style amount").help("How strongly the style is applied: 100% as designed, 0% none, 200% twice as strong. The suggested tints, the target markers and the PhotoLab values follow.")
-                    Slider(value: $model.gradingStyleAmount, in: 0...2, step: 0.05)
-                    Text("\(Int((model.gradingStyleAmount * 100).rounded()))%")
-                        .monospacedDigit()
-                        .frame(width: 44, alignment: .trailing)
-                        .onTapGesture(count: 2) { model.gradingStyleAmount = 1 }
-                        .help("Double-click to return to 100%")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Amount:").help("How strongly the style is applied: 1 as designed, 0 none, 2 twice as strong. The suggested tints, the target markers and the PhotoLab values follow.")
+                    HStack(spacing: 8) {
+                        Slider(value: $model.gradingStyleAmount, in: 0...2)
+                        Text(model.gradingStyleAmount.formatted(.number.precision(.fractionLength(2))))
+                            .monospacedDigit()
+                            .frame(width: 40, alignment: .trailing)
+                            .onTapGesture(count: 2) { model.gradingStyleAmount = 1 }
+                            .help("Double-click to return to 1")
+                    }
                 }
             }
             if let hint = model.intentionStyle {
