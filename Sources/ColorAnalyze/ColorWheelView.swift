@@ -475,6 +475,8 @@ struct ColorWheelView: View {
                     Text("Amount:").help("How strongly the style is applied: 1 as designed, 0 none, 2 twice as strong. The suggested tints, the target markers and the PhotoLab values follow.")
                     HStack(spacing: 8) {
                         Slider(value: $model.gradingStyleAmount, in: 0...2)
+                            .simultaneousGesture(TapGesture(count: 2).onEnded { model.gradingStyleAmount = 1 })
+                            .help("Double-click to return to 1")
                         Text(model.gradingStyleAmount.formatted(.number.precision(.fractionLength(2))))
                             .monospacedDigit()
                             .frame(width: 40, alignment: .trailing)
