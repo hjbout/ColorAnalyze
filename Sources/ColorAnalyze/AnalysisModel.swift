@@ -463,6 +463,7 @@ final class AnalysisModel {
                 saliencyOverlay = nil
                 setWeights(nil)
                 compareMode = .split
+                gradingStyleAmount = 1   // every new photo starts with the style as designed
                 // Every new photo starts on the Harmony tab, whatever tab was open before.
                 UserDefaults.standard.set(PaneTab.harmony.rawValue, forKey: PaneTab.storageKey)
                 NSDocumentController.shared.noteNewRecentDocumentURL(url)
