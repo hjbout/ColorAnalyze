@@ -34,7 +34,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
         <dict>
             <key>CFBundleTypeName</key><string>Image</string>
             <key>CFBundleTypeRole</key><string>Viewer</string>
-            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSHandlerRank</key><string>Default</string>
             <key>LSItemContentTypes</key>
             <array>
                 <string>public.tiff</string>
