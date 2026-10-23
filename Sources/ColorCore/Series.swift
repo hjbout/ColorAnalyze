@@ -114,18 +114,28 @@ public enum SeriesAnalyzer {
         guard !palette.isEmpty else { return nil }
         let (index, d) = nearest(centroid, in: palette.map(\.centroid))
         guard d < Double(threshold) else { return nil }
+        return pair(centroid, with: palette, at: index)
+    }
+
+    /// The match with the palette color at `index`, chosen by hand: no distance limit. nil when `index` is not in the palette.
+    public static func match(_ centroid: SIMD3<Float>, against palette: [SharedColor], forcedIndex index: Int) -> SeriesMatch? {
+        palette.indices.contains(index) ? pair(centroid, with: palette, at: index) : nil
+    }
+
+    private static func pair(_ centroid: SIMD3<Float>, with palette: [SharedColor], at index: Int) -> SeriesMatch {
         let color = SRGBColor(oklab: centroid), shared = palette[index].color
         let chromatic = color.chroma >= DxOMapping.neutralChroma && shared.chroma >= DxOMapping.neutralChroma
         return SeriesMatch(
-            index: index, deltaE: d,
+            index: index, deltaE: distance(centroid, palette[index].centroid),
             hueShift: chromatic ? ColorMath.signedAngle(from: color.hsb.h, to: shared.hsb.h) : nil,
             // Relative to at least `neutralChroma`, so a nearly grey color does not give an absurd percentage.
             saturationChange: 100 * (shared.chroma - color.chroma) / max(color.chroma, DxOMapping.neutralChroma),
             lightnessChange: shared.lightness - color.lightness)
     }
 
+    /// `forced` holds, per color, a palette index chosen by hand (nil = the nearest color within `threshold`).
     public static func consistency(of colors: [SeriesColor], against palette: [SharedColor],
-                                   threshold: Float = matchThreshold) -> PhotoConsistency {
+                                   threshold: Float = matchThreshold, forced: [Int?] = []) -> PhotoConsistency {
         let total = colors.reduce(0) { $0 + $1.share }
         guard total > 0, !palette.isEmpty else {
             return PhotoConsistency(meanDeltaE: worstDeltaE, score: 0, unmatchedShare: 1, hasSuggestion: false,
@@ -138,11 +148,16 @@ public enum SeriesAnalyzer {
         var sumWeight = 0.0, sumChromaPhoto = 0.0, sumChromaShift = 0.0, sumLightness = 0.0
         var sumSin = 0.0, sumCos = 0.0, sumHueWeight = 0.0
 
-        for color in colors {
+        for (position, color) in colors.enumerated() {
             let share = color.share / total
-            let (index, d) = nearest(color.centroid, in: palette.map(\.centroid))
+            var (index, d) = nearest(color.centroid, in: palette.map(\.centroid))
+            let chosen = forced.indices.contains(position) ? forced[position].flatMap { palette.indices.contains($0) ? $0 : nil } : nil
+            if let chosen {
+                index = chosen
+                d = distance(color.centroid, palette[chosen].centroid)
+            }
             weightedDistance += share * min(d, worstDeltaE)
-            guard d < Double(threshold) else {
+            guard chosen != nil || d < Double(threshold) else {
                 unmatched += share
                 matches.append(nil)
                 continue

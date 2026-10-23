@@ -350,11 +350,8 @@ private struct SeriesWheelView: View {
             }
             .aspectRatio(1, contentMode: .fit)
 
-            Picker("Wheel", selection: $series.hueSpace) {
-                ForEach(HueSpace.allCases) { Text($0.displayName).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 24)
+            WheelSwatchPicker(selection: series.hueSpace) { space, remember in if remember { series.hueSpace = space } }
+                .frame(maxWidth: 220)
 
             IntentionField(title: "Intention for the series", placeholder: "What should the series feel like?",
                            text: $series.intention)

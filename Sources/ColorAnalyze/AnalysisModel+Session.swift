@@ -14,7 +14,7 @@ extension AnalysisModel {
             graded: afterImage?.url.path,
             colorCount: colorCount,
             weighting: weighting == .off ? nil : weighting.rawValue,
-            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex, isProtected: $0.protection, targetHue: $0.targetHue) },
+            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex, isProtected: $0.protection, targetHue: $0.targetHue, referenceIndex: $0.referenceIndex, sampleRadius: $0.customSampleRadius) },
             harmony: harmonyChoice?.rawValue,
             harmonyRotation: harmonyRotationOverride,
             hueSpace: hueSpace == .rgb ? nil : hueSpace.rawValue,
@@ -64,9 +64,14 @@ extension AnalysisModel {
         harmonyRotationOverride = session.harmonyRotation
         markers = session.markers.map { saved in
             let location = CGPoint(x: min(1, max(0, saved.x)), y: min(1, max(0, saved.y)))
-            var marker = Marker(location: location, color: sample(at: location))
+            let radius = saved.sampleRadius.map {
+                min(Self.sampleRadiusRange.upperBound, max(Self.sampleRadiusRange.lowerBound, $0))
+            }
+            var marker = Marker(location: location, color: sample(at: location, radius: radius ?? Self.defaultSampleRadius))
+            marker.customSampleRadius = radius
             marker.protection = saved.isProtected
             marker.targetHue = saved.targetHue
+            marker.referenceIndex = saved.referenceIndex
             return marker
         }
         selectedMarkerID = nil
@@ -86,7 +91,7 @@ extension AnalysisModel {
         var missingReference: String?
         if let reference = session.reference {
             if let referenceURL = session.referenceURL(photoFolder: photo.deletingLastPathComponent()) {
-                await openReference(referenceURL).value
+                await openReference(referenceURL, keepChoices: true).value
             } else {
                 missingReference = URL(fileURLWithPath: reference).lastPathComponent
             }
@@ -177,6 +182,34 @@ extension AnalysisModel {
         case .dxoPreset:
             guard let grading = colorGrading else { throw ReportError.noGrading }
             try Data(grading.preset.luaText().utf8).write(to: url, options: .atomic)
+        }
+    }
+
+    /// Applies the grading as the preview shows it (style, amounts, hand-set targets, protected colors) to the photo at its
+    /// full resolution and saves it in the photo's color space, with its metadata.
+    func presentGradedPhotoPanel(_ format: GradedPhotoExport.Format) {
+        guard let image else { return }
+        guard var settings = prediction()?.settings else { errorMessage = ReportError.noGrading.localizedDescription; return }
+        settings.amount = previewAmount
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [format.type]
+        panel.nameFieldStringValue = image.url.deletingPathExtension().lastPathComponent + " – graded." + format.fileExtension
+        panel.directoryURL = image.url.deletingLastPathComponent()
+        panel.message = (format == .tiff ? "Save the graded photo as a 16-bit TIFF" : "Save the graded photo as a JPEG")
+            + ", in the color space of the original and with its metadata."
+            + (previewAmount == 1 ? "" : " The preview amount ×\(previewAmount.formatted()) is applied.")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let source = image.url, graded = settings
+        showNotice("Rendering \(url.lastPathComponent)…")
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try GradedPhotoExport.write(photo: source, settings: graded, format: format, to: url)
+                }.value
+                showNotice("Exported \(url.lastPathComponent)")
+            } catch {
+                errorMessage = "Could not export the graded photo: \(error.localizedDescription)"
+            }
         }
     }
 

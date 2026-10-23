@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import ImageIO
 import Testing
 @testable import ColorCore
 
@@ -83,6 +84,12 @@ import Testing
     @Test func sampleAveragesNeighborhood() {
         let c = Self.blocks.sample(at: CGPoint(x: 0.3, y: 0.5), radius: 0.05)
         #expect(abs(c.r - 0.85) < 0.002 && abs(c.g - 0.15) < 0.002 && abs(c.b - 0.1) < 0.002)
+    }
+
+    @Test func smallerSampleRadiusStaysInsideABlock() {
+        let small = Self.blocks.sample(at: CGPoint(x: 0.3, y: 0.5), radius: 0.003)
+        let large = Self.blocks.sample(at: CGPoint(x: 0.3, y: 0.5), radius: 0.05)
+        #expect(small != large)
     }
 }
 
@@ -184,6 +191,13 @@ import Testing
         #expect(again.markers.map(\.isProtected) == [false, true])
         let old = ##"{"x":0.1,"y":0.2,"hex":"#000000"}"##
         #expect(try JSONDecoder().decode(Session.Marker.self, from: Data(old.utf8)).isProtected == nil)
+    }
+
+    @Test func sampleRadiusSurvivesARoundTripAndIsOptional() throws {
+        var session = Self.sample()
+        session.markers[0].sampleRadius = 0.03
+        let decoded = try JSONDecoder().decode(Session.self, from: JSONEncoder().encode(session))
+        #expect(decoded.markers.map(\.sampleRadius) == [0.03, nil])
     }
 
     @Test func sidecarSitsNextToPhoto() {
@@ -593,6 +607,35 @@ import Testing
     }
 }
 
+@Suite struct ExtraWheelTests {
+    @Test(arguments: [HueSpace.lab, .munsell, .itten])
+    func roundTripsAndRises(space: HueSpace) {
+        var last = -1.0
+        let start = space.position(ofRGBHue: 0)
+        for h in stride(from: 0.0, through: 359.0, by: 1) {
+            let p = space.position(ofRGBHue: h)
+            let unwrapped = p < start - 1e-9 ? p + 360 : p
+            #expect(unwrapped > last - 1e-9)
+            last = unwrapped
+            #expect(abs(ColorMath.signedAngle(from: h, to: space.rgbHue(atPosition: p))) < 0.05)
+        }
+        #expect(HueSpace(rawValue: space.rawValue) == space)
+    }
+
+    @Test func labPositionsAreTheLabHueOfThePureColor() {
+        // CIELAB hue angles of sRGB red, yellow, green, cyan, blue, magenta.
+        for (rgb, lab) in [(0.0, 40.0), (60.0, 102.9), (120.0, 136.0), (180.0, 196.4), (240.0, 306.3), (300.0, 328.2)] {
+            #expect(abs(ColorMath.signedAngle(from: lab, to: HueSpace.lab.position(ofRGBHue: rgb))) < 1)
+        }
+    }
+
+    @Test func ittenAndMunsellStepsAreEvenlySpaced() {
+        #expect(abs(ColorMath.signedAngle(from: 120, to: HueSpace.itten.position(ofRGBHue: 55))) < 0.01)
+        // 5Y (position 72°) in sRGB hue, from the Munsell renotation.
+        #expect(abs(ColorMath.signedAngle(from: 90, to: HueSpace.munsell.position(ofRGBHue: 45.7))) < 0.01)
+    }
+}
+
 @Suite struct RYBTests {
     @Test func anchorsMapToTheArtistsWheel() {
         let expected: [(rgb: Double, ryb: Double)] = [(0, 0), (30, 60), (60, 120), (120, 180), (180, 210), (240, 240), (300, 330)]
@@ -796,6 +839,21 @@ import Testing
         #expect(!strict.hasSuggestion)
         #expect(loose.hasSuggestion && loose.unmatchedShare == 0)
         #expect(abs((loose.hueShift ?? 0) - 40) < 8)
+    }
+
+    @Test func aColorCanBeMatchedByHandWithAChosenReferenceColor() {
+        let reference = SeriesAnalyzer.sharedPalette(from: [Self.photo(rotation: 40)], size: 4)
+        let orange = Self.hue(30)
+        let nearest = SeriesAnalyzer.match(orange, against: reference, threshold: SeriesAnalyzer.referenceMatchThreshold)
+        let other = reference.indices.first { $0 != nearest?.index }!
+        let forced = SeriesAnalyzer.match(orange, against: reference, forcedIndex: other)
+        #expect(forced?.index == other)                                                          // no distance limit
+        #expect(SeriesAnalyzer.match(orange, against: reference, forcedIndex: 99) == nil)
+
+        let colors = Self.photo()
+        let chosen = colors.indices.map { _ in Optional(other) }
+        let c = SeriesAnalyzer.consistency(of: colors, against: reference, threshold: 0.001, forced: chosen)
+        #expect(c.unmatchedShare == 0 && c.matches.allSatisfy { $0 == other })
     }
 
     @Test func exportsListPaletteAndPhotos() throws {
@@ -2105,5 +2163,75 @@ import Testing
         let marker = Session.Marker(x: 0.1, y: 0.2, hex: "#112233", targetHue: 42)
         let data = try JSONEncoder().encode(marker)
         #expect(try JSONDecoder().decode(Session.Marker.self, from: data).targetHue == 42)
+    }
+}
+
+@Suite struct GradedPhotoExportTests {
+    @Test func stripedRenderMatchesEightBitRenderAndWritesTIFF() throws {
+        let w = 40, h = 600   // more than two strips
+        let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        for y in 0..<h {
+            ctx.setFillColor(CGColor(srgbRed: CGFloat(y) / CGFloat(h), green: 0.4, blue: 0.6, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: y, width: w, height: 1))
+        }
+        let source = ctx.makeImage()!
+        var settings = GradePreviewSettings()
+        settings.shadows = .init(dxoHue: 231, saturation: 40)
+        settings.highlights = .init(dxoHue: 40, saturation: 40)
+        let big = try #require(GradedPhotoExport.render(source, settings: settings))
+        let small = try #require(GradePreview.render(source, settings: settings))
+        #expect(big.bitsPerComponent == 16)
+        #expect(big.height == h)
+        func pixel(_ image: CGImage, _ y: Int) -> [Double] {
+            var bytes = [UInt8](repeating: 0, count: 4)
+            let c = CGContext(data: &bytes, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+            c.draw(image, in: CGRect(x: 0, y: -(h - 1 - y), width: w, height: h))
+            return bytes.prefix(3).map(Double.init)
+        }
+        for y in [0, 255, 256, 300, 599] {
+            for (a, b) in zip(pixel(big, y), pixel(small, y)) { #expect(abs(a - b) <= 1.5) }
+        }
+        let input = FileManager.default.temporaryDirectory.appendingPathComponent("gpe-in.png")
+        let output = FileManager.default.temporaryDirectory.appendingPathComponent("gpe-out.tiff")
+        let dest = CGImageDestinationCreateWithURL(input as CFURL, "public.png" as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, source, nil)
+        #expect(CGImageDestinationFinalize(dest))
+        try GradedPhotoExport.write(photo: input, settings: settings, to: output)
+        let read = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+        let back = try #require(CGImageSourceCreateImageAtIndex(read, 0, nil))
+        #expect(back.bitsPerComponent == 16)
+        #expect(back.height == h)
+        let jpg = FileManager.default.temporaryDirectory.appendingPathComponent("gpe-out.jpg")
+        try GradedPhotoExport.write(photo: input, settings: settings, format: .jpeg, to: jpg)
+        let jpgSource = try #require(CGImageSourceCreateWithURL(jpg as CFURL, nil))
+        #expect(CGImageSourceGetCount(jpgSource) == 1)
+    }
+}
+
+@Suite struct GradedPhotoExportMetadataTests {
+    @Test func keepsColorSpaceAndExif() throws {
+        let p3 = CGColorSpace(name: CGColorSpace.displayP3)!
+        let ctx = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0, space: p3,
+                            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        ctx.setFillColor(CGColor(colorSpace: p3, components: [0.2, 0.7, 0.3, 1])!)
+        ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        let dir = FileManager.default.temporaryDirectory
+        let input = dir.appendingPathComponent("meta-in.jpg"), output = dir.appendingPathComponent("meta-out.tiff")
+        let dest = CGImageDestinationCreateWithURL(input as CFURL, "public.jpeg" as CFString, 1, nil)!
+        let exif: [CFString: Any] = [kCGImagePropertyExifDictionary: [kCGImagePropertyExifLensModel: "TestLens"],
+                                     kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "TestCam"]]
+        CGImageDestinationAddImage(dest, ctx.makeImage()!, exif as CFDictionary)
+        #expect(CGImageDestinationFinalize(dest))
+        var settings = GradePreviewSettings()
+        settings.midtones = .init(dxoHue: 40, saturation: 30)
+        try GradedPhotoExport.write(photo: input, settings: settings, to: output)
+        let source = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        #expect(image.colorSpace?.name as String? == CGColorSpace.displayP3 as String)
+        let props = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        #expect((props[kCGImagePropertyExifDictionary] as? [CFString: Any])?[kCGImagePropertyExifLensModel] as? String == "TestLens")
+        #expect((props[kCGImagePropertyTIFFDictionary] as? [CFString: Any])?[kCGImagePropertyTIFFMake] as? String == "TestCam")
     }
 }

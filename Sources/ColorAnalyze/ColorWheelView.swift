@@ -23,6 +23,9 @@ enum WheelGeometry {
     @MainActor private static let rybWheel = renderWheel(size: 720, space: .ryb)
     @MainActor private static let dxoWheel = renderWheel(size: 720, space: .dxo)
     @MainActor private static let oklchWheel = renderWheel(size: 720, space: .oklch)
+    @MainActor private static let labWheel = renderWheel(size: 720, space: .lab)
+    @MainActor private static let munsellWheel = renderWheel(size: 720, space: .munsell)
+    @MainActor private static let ittenWheel = renderWheel(size: 720, space: .itten)
 
     @MainActor static func wheelImage(for space: HueSpace) -> CGImage {
         switch space {
@@ -30,6 +33,9 @@ enum WheelGeometry {
         case .ryb: rybWheel
         case .dxo: dxoWheel
         case .oklch: oklchWheel
+        case .lab: labWheel
+        case .munsell: munsellWheel
+        case .itten: ittenWheel
         }
     }
 
@@ -331,109 +337,112 @@ struct ColorWheelView: View {
     @ViewBuilder
     private func harmonyTab(fit: HarmonyFit?) -> some View {
         @Bindable var model = model
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 22) {
             IntentionField(title: "Intention", placeholder: "What should this photo feel like?",
                            text: $model.intention)
-            HStack(spacing: 6) {
-                Text("Wheel").font(.subheadline).help("RGB is the ordinary sRGB hue circle. RYB is the artist's red–yellow–blue wheel, where the classic complements are red–green, orange–blue and yellow–violet. DxO is PhotoLab's own hue axis: the angles are the Hue numbers of its Color Grading and HSL wheels. OKLCH is a perceptual wheel: equal angles look like equal color steps.\n\nOn the DxO, RYB and OKLCH wheels the harmonies are computed in that wheel's terms, but hue shifts and target hues in the list stay in sRGB degrees.")
-                Picker("Wheel", selection: $model.hueSpace) {
-                    ForEach(HueSpace.allCases) { Text($0.displayName).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                Text("Targets").font(.subheadline).help("Targets: a color inside the sector around a target counts as on target and is not shifted.")
-                Menu {
-                    Picker("Targets", selection: $model.harmonySector) {
-                        ForEach(HarmonySector.allCases) { Text($0.title).tag($0) }
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Text("Wheel").font(.subheadline).help("RGB is the ordinary sRGB hue circle. RYB is the artist's red–yellow–blue wheel, where the classic complements are red–green, orange–blue and yellow–violet. DxO is PhotoLab's own hue axis: the angles are the Hue numbers of its Color Grading and HSL wheels. OKLCH is a perceptual wheel: equal angles look like equal color steps.\n\nOn the DxO, RYB and OKLCH wheels the harmonies are computed in that wheel's terms, but hue shifts and target hues in the list stay in sRGB degrees.")
+                    WheelSwatchPicker(selection: model.hueSpace) { space, remember in
+                        model.chooseWheel(space, remember: remember)
                     }
-                    .pickerStyle(.inline)
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
+                    .frame(maxWidth: .infinity)
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-            }
-            HStack(spacing: 12) {
-                Toggle("Skin tone line", isOn: $model.showSkinTone)
-                    .help("Reference band for skin tones (sRGB hue ≈ 13°–37°). Skin-like colors in the list are marked whether or not the line is shown.")
-                Toggle("Protect skin tones", isOn: $model.protectSkin)
-                    .help("Skin-like colors keep their hue: the grading suggestions do not aim them at the harmony. Right-click a color to override this for one color. Sand, wood or a red wall can look like skin to this rule of thumb.")
-                Spacer(minLength: 0)
-            }
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
-            Picker("Harmony", selection: $model.harmonyChoice) {
-                Text("Auto-detect").tag(HarmonyKind?.none)
-                Divider()
-                ForEach(HarmonyKind.allCases) { kind in
-                    Text(kind.displayName).tag(HarmonyKind?.some(kind))
-                }
-            }
-            if let fit {
-                HStack {
-                    Text("\(fit.kind.displayName)\(model.harmonyChoice == nil ? " (detected)" : "")")
-                        .font(.headline)
-                    Spacer()
-                    Text(String(format: "fit ±%.0f°", fit.deviation))
+                HStack(spacing: 8) {
+                    Text("Targets").font(.subheadline).help("Targets: a color inside the sector around a target counts as on target and is not shifted.")
+                    ResettableSlider(value: $model.harmonySector, range: 0...30, resetValue: 10)
+                        .frame(maxWidth: .infinity)
+                        .help("Double-click to return to ±10°")
+                    Text(model.harmonySector < 0.5 ? "exact" : "±\(Int(model.harmonySector.rounded()))°")
                         .monospacedDigit()
-                        .foregroundStyle(fitColor(fit.deviation))
+                        .frame(width: 40, alignment: .trailing)
                 }
-                if let after = model.afterHarmony {
-                    HStack {
-                        Text(model.afterImage == nil ? "Predicted after grading" : "After grading")
-                            .font(.subheadline)
-                        Spacer()
-                        Text("fit ±\(Int(after.deviation.rounded()))° (\(signedRounded(after.deviation - fit.deviation, unit: "°")))")
-                            .monospacedDigit()
-                            .foregroundStyle(fitColor(after.deviation))
+                HStack(spacing: 12) {
+                    Toggle("Skin tone line", isOn: $model.showSkinTone)
+                        .help("Reference band for skin tones (sRGB hue ≈ 13°–37°). Skin-like colors in the list are marked whether or not the line is shown.")
+                    Toggle("Protect skin tones", isOn: $model.protectSkin)
+                        .help("Skin-like colors keep their hue: the grading suggestions do not aim them at the harmony. Right-click a color to override this for one color. Sand, wood or a red wall can look like skin to this rule of thumb.")
+                    Spacer(minLength: 0)
+                }
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Harmony", selection: $model.harmonyChoice) {
+                    Text("Auto-detect").tag(HarmonyKind?.none)
+                    Divider()
+                    ForEach(HarmonyKind.allCases) { kind in
+                        Text(kind.displayName).tag(HarmonyKind?.some(kind))
                     }
                 }
-                HStack {
-                    Text("Target hues (RGB): " + fit.targetRGBHues.map { String(format: "%.0f°", $0) }.joined(separator: " · ")
-                         + (fit.tolerance > 0 ? String(format: " · sector ±%.0f°", fit.tolerance) : " · exact hue"))
+                if let fit {
+                    HStack {
+                        Text("\(fit.kind.displayName)\(model.harmonyChoice == nil ? " (detected)" : "")")
+                            .font(.headline)
+                        Spacer()
+                        Text(String(format: "fit ±%.0f°", fit.deviation))
+                            .monospacedDigit()
+                            .foregroundStyle(fitColor(fit.deviation))
+                    }
+                    if let after = model.afterHarmony {
+                        HStack {
+                            Text(model.afterImage == nil ? "Predicted after grading" : "After grading")
+                                .font(.subheadline)
+                            Spacer()
+                            Text("fit ±\(Int(after.deviation.rounded()))° (\(signedRounded(after.deviation - fit.deviation, unit: "°")))")
+                                .monospacedDigit()
+                                .foregroundStyle(fitColor(after.deviation))
+                        }
+                    }
+                    HStack {
+                        Text("Target hues (RGB): " + fit.targetRGBHues.map { String(format: "%.0f°", $0) }.joined(separator: " · ")
+                             + (fit.tolerance > 0 ? String(format: " · sector ±%.0f°", fit.tolerance) : " · exact hue"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if model.harmonyRotationOverride != nil {
+                            Button("Reset Rotation") { model.harmonyRotationOverride = nil }
+                                .controlSize(.small)
+                        }
+                    }
+                } else if !model.markers.isEmpty {
+                    Text("All colors are neutral — no harmony to detect.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Spacer()
-                    if model.harmonyRotationOverride != nil {
-                        Button("Reset Rotation") { model.harmonyRotationOverride = nil }
+                }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    if !model.seriesPalette.isEmpty {
+                        Toggle("\(model.referenceTitle) palette", isOn: $model.showSeriesReference)
+                            .toggleStyle(.checkbox)
                             .controlSize(.small)
+                            .help(model.referencePhoto == nil
+                                  ? "Show the shared palette of the series window as diamonds on the wheel and compare this photo's colors with it."
+                                  : "Show the palette of the reference photo as diamonds on the wheel and compare this photo's colors with it.")
                     }
-                }
-            } else if !model.markers.isEmpty {
-                Text("All colors are neutral — no harmony to detect.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Divider().padding(.vertical, 2)
-            HStack(spacing: 8) {
-                if !model.seriesPalette.isEmpty {
-                    Toggle("\(model.referenceTitle) palette", isOn: $model.showSeriesReference)
-                        .toggleStyle(.checkbox)
-                        .controlSize(.small)
-                        .help(model.referencePhoto == nil
-                              ? "Show the shared palette of the series window as diamonds on the wheel and compare this photo's colors with it."
-                              : "Show the palette of the reference photo as diamonds on the wheel and compare this photo's colors with it.")
-                }
-                Spacer(minLength: 0)
-                Menu {
-                    Button("Open Reference Photo…") { model.presentOpenReferencePanel() }
-                    if let reference = model.referencePhoto {
-                        Button("Remove Reference (\(reference.name))") { model.clearReference() }
+                    Spacer(minLength: 0)
+                    Menu {
+                        Button("Open Reference Photo…") { model.presentOpenReferencePanel() }
+                        if let reference = model.referencePhoto {
+                            Button("Remove Reference (\(reference.name))") { model.clearReference() }
+                        }
+                    } label: {
+                        Label(model.referencePhoto?.name ?? "Reference photo", systemImage: "photo.on.rectangle")
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
-                } label: {
-                    Label(model.referencePhoto?.name ?? "Reference photo", systemImage: "photo.on.rectangle")
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    .menuStyle(.borderlessButton)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .disabled(model.image == nil)
+                    .help("Load a photo whose look you want to match: its colors become the reference palette on the wheel, in the list and for the Color Grading suggestion.")
                 }
-                .menuStyle(.borderlessButton)
-                .controlSize(.small)
-                .fixedSize()
-                .disabled(model.image == nil)
-                .help("Load a photo whose look you want to match: its colors become the reference palette on the wheel, in the list and for the Color Grading suggestion.")
-            }
-            if model.isSeriesReferenceShown, let seriesFit = model.seriesFit {
-                seriesFitView(seriesFit, after: model.afterSeriesFit)
+                if model.isSeriesReferenceShown, let seriesFit = model.seriesFit {
+                    seriesFitView(seriesFit, after: model.afterSeriesFit)
+                }
+                ReferencePanelView()
             }
         }
     }
@@ -442,78 +451,85 @@ struct ColorWheelView: View {
     @ViewBuilder
     private var gradingTab: some View {
         @Bindable var model = model
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 22) {
             whiteBalanceNote()
-            HStack {
-                Text("Aim at").help("Harmony: tint toward the harmony's hues. Series / Reference: toward that palette. Tints: strengthen the faint tint each tonal range already has.")
-                Picker("Aim at", selection: $model.gradingTarget) {
-                    Text("Harmony").tag(AnalysisModel.GradingTarget.harmony)
-                    if model.isSeriesReferenceShown {
-                        Text(model.referenceTitle).tag(AnalysisModel.GradingTarget.series)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Aim at").help("Harmony: tint toward the harmony's hues. Series / Reference: toward that palette. Tints: strengthen the faint tint each tonal range already has.")
+                    Picker("Aim at", selection: $model.gradingTarget) {
+                        Text("Harmony").tag(AnalysisModel.GradingTarget.harmony)
+                        if model.isSeriesReferenceShown {
+                            Text(model.referenceTitle).tag(AnalysisModel.GradingTarget.series)
+                        }
+                        Text("Tints").tag(AnalysisModel.GradingTarget.emphasize)
                     }
-                    Text("Tints").tag(AnalysisModel.GradingTarget.emphasize)
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-            if model.gradingFallsBackToTints {
-                Text("The colors are nearly neutral, so there is nothing to aim at: the grading strengthens the tints the photo already has.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack {
-                Text("Style").help("A creative direction on top of the harmony: the greys of the shadows and highlights take on a cast of their own, such as warm highlights over cool shadows.")
-                Picker("Style", selection: $model.gradingStyle) {
-                    ForEach(GradingStyle.allCases) { Text($0.displayName).tag($0) }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-            }
-            do {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Amount:").help("How strongly the style is applied: 1 as designed, 0 none, 2 twice as strong. With the Neutral style it scales the whole grading, the hue turns included. The suggested tints, the target markers and the PhotoLab values follow.")
-                    HStack(spacing: 8) {
-                        ResettableSlider(value: $model.gradingStyleAmount, range: 0...2, resetValue: 1)
-                            .help("Double-click to return to 1")
-                        Text(model.gradingStyleAmount.formatted(.number.precision(.fractionLength(2))))
-                            .monospacedDigit()
-                            .frame(width: 40, alignment: .trailing)
-                            .onTapGesture(count: 2) { model.gradingStyleAmount = 1 }
-                            .help("Double-click to return to 1")
-                    }
-                }
-            }
-            if let hint = model.intentionStyle {
-                HStack(spacing: 6) {
-                    Image(systemName: "lightbulb")
-                        .foregroundStyle(.secondary)
-                    Text("Your intention says “\(hint.words.joined(separator: ", "))”: \(hint.style.displayName.lowercased())?")
-                        .lineLimit(2)
-                    Spacer(minLength: 0)
-                    Button("Use") { model.gradingStyle = hint.style }
-                        .controlSize(.small)
-                }
-                .font(.caption)
-                .help("Suggested from the words of your Intention; nothing changes until you click Use.")
-            }
-            if let grading = model.colorGrading {
-                if let fit = grading.fit {
-                    Text(fit.after < fit.before - 0.5
-                         ? "Predicted: the colors are \(Int(fit.before.rounded()))° from their target hues now, \(Int(fit.after.rounded()))° after this grading."
-                         : model.gradingStyle != .neutral && fit.after > fit.before + 0.5
-                         ? "Predicted: the colors are \(Int(fit.before.rounded()))° from their target hues now, \(Int(fit.after.rounded()))° with this style: the cast costs hue accuracy."
-                         : "Predicted: no grading within this strength brings the colors closer to their target hues.")
+                if model.gradingFallsBackToTints {
+                    Text("The colors are nearly neutral, so there is nothing to aim at: the grading strengthens the tints the photo already has.")
                         .font(.caption)
-                        .foregroundStyle(fit.after < fit.before - 0.5 ? Color.green : Color.secondary)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .help("Weighted mean distance in sRGB hue, from the calibrated model of PhotoLab's Color Grading (see the README).")
                 }
-                previewControls
-            } else {
-                Text("Needs colors with a harmony.")
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Style").help("A creative direction on top of the harmony: the greys of the shadows and highlights take on a cast of their own, such as warm highlights over cool shadows.")
+                    LivePreviewPicker(selection: model.gradingStyle,
+                                      items: GradingStyle.allCases.map { ($0, $0.displayName) }) { style, remember in
+                        if remember { model.gradingStyle = style } else { model.withoutRemembering { model.gradingStyle = style } }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                do {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Amount:").help("How strongly the grading is applied: 1 as found, 0 none, 3 about twice the Strong of earlier versions. It scales the whole grading, the style and the hue turns included. The suggested tints, the target markers and the PhotoLab values follow.")
+                        HStack(spacing: 8) {
+                            ResettableSlider(value: $model.gradingAmount, range: 0...3, resetValue: 1)
+                                .help("Double-click to return to 1")
+                            Text(model.gradingAmount.formatted(.number.precision(.fractionLength(2))))
+                                .monospacedDigit()
+                                .frame(width: 40, alignment: .trailing)
+                                .onTapGesture(count: 2) { model.gradingAmount = 1 }
+                                .help("Double-click to return to 1")
+                        }
+                    }
+                }
+                if let hint = model.intentionStyle {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lightbulb")
+                            .foregroundStyle(.secondary)
+                        Text("Your intention says “\(hint.words.joined(separator: ", "))”: \(hint.style.displayName.lowercased())?")
+                            .lineLimit(2)
+                        Spacer(minLength: 0)
+                        Button("Use") { model.gradingStyle = hint.style }
+                            .controlSize(.small)
+                    }
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .help("Suggested from the words of your Intention; nothing changes until you click Use.")
+                }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 12) {
+                if let grading = model.colorGrading {
+                    if let fit = grading.fit {
+                        Text(fit.after < fit.before - 0.5
+                             ? "Predicted: the colors are \(Int(fit.before.rounded()))° from their target hues now, \(Int(fit.after.rounded()))° after this grading."
+                             : model.gradingStyle != .neutral && fit.after > fit.before + 0.5
+                             ? "Predicted: the colors are \(Int(fit.before.rounded()))° from their target hues now, \(Int(fit.after.rounded()))° with this style: the cast costs hue accuracy."
+                             : "Predicted: no grading brings the colors closer to their target hues.")
+                            .font(.caption)
+                            .foregroundStyle(fit.after < fit.before - 0.5 ? Color.green : Color.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .help("Weighted mean distance in sRGB hue, from the calibrated model of PhotoLab's Color Grading (see the README).")
+                    }
+                    previewControls
+                } else {
+                    Text("Needs colors with a harmony.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -549,68 +565,68 @@ struct ColorWheelView: View {
     @ViewBuilder
     private var photoLabTab: some View {
         @Bindable var model = model
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Color Grading")
-                    .font(.subheadline.weight(.semibold))
-                    .help("A starting point, not a recipe: Hue and Saturation of the three wheels are chosen with a model of PhotoLab's Color Grading, measured on a chart (see the README), so that the dominant colors end up as close as possible to their target hues. The Strength limits the Saturation. Check it in PhotoLab.")
-                Spacer()
-                Text("Strength").font(.subheadline).help("How strongly the tints are applied")
-                Picker("Strength", selection: $model.gradingStrength) {
-                    ForEach(ColorGradingSuggestion.Strength.allCases) { Text($0.displayName).tag($0) }
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Color Grading")
+                        .font(.subheadline.weight(.semibold))
+                        .help("A starting point, not a recipe: Hue and Saturation of the three wheels are chosen with a model of PhotoLab's Color Grading, measured on a chart (see the README), so that the dominant colors end up as close as possible to their target hues. The Amount in the Grading tab scales the Saturation. Check it in PhotoLab.")
+                    Spacer()
+                    Button("Export Preset…") { model.presentExportPanel(.dxoPreset) }
+                        .controlSize(.small)
+                        .disabled(model.colorGrading == nil)
+                        .help("Save the suggested Color Grading as a DxO PhotoLab preset")
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(width: 104)
-                Button("Export Preset…") { model.presentExportPanel(.dxoPreset) }
-                    .controlSize(.small)
-                    .disabled(model.colorGrading == nil)
-                    .help("Save the suggested Color Grading as a DxO PhotoLab preset")
-            }
-            if let grading = model.colorGrading {
-                ForEach(grading.details, id: \.range) { detail in
-                    gradingRow(detail.range.displayName, hue: detail.tintHue) {
-                        if detail.reason == .tinted {
-                            Text(detail.wheel.saturation > 0
-                                 ? "Hue \(detail.wheel.hue) · Sat \(detail.wheel.saturation)"
-                                     + (detail.wheel.luminance != 0 ? " · Lum \(detail.wheel.luminance)" : "")
-                                 : "Lum \(detail.wheel.luminance)")
-                                .monospacedDigit()
-                        } else {
-                            Text(reasonText(detail.reason))
-                                .foregroundStyle(.secondary)
+                if let grading = model.colorGrading {
+                    ForEach(grading.details, id: \.range) { detail in
+                        gradingRow(detail.range.displayName, hue: detail.tintHue) {
+                            if detail.reason == .tinted {
+                                Text(detail.wheel.saturation > 0
+                                     ? "Hue \(detail.wheel.hue) · Sat \(detail.wheel.saturation)"
+                                         + (detail.wheel.luminance != 0 ? " · Lum \(detail.wheel.luminance)" : "")
+                                     : "Lum \(detail.wheel.luminance)")
+                                    .monospacedDigit()
+                            } else {
+                                Text(reasonText(detail.reason))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-                }
-                let master = grading.preset.master
-                gradingRow("Master", hue: master.saturation > 0 ? DxOHue.toSRGB(Double(master.hue)) : nil) {
-                    if master.saturation > 0 {
-                        Text("Hue \(master.hue) · Sat \(master.saturation)")
+                    let master = grading.preset.master
+                    gradingRow("Master", hue: master.saturation > 0 ? DxOHue.toSRGB(Double(master.hue)) : nil) {
+                        if master.saturation > 0 {
+                            Text("Hue \(master.hue) · Sat \(master.saturation)")
+                                .monospacedDigit()
+                        } else {
+                            Text("—").foregroundStyle(.secondary)
+                        }
+                    }
+                    gradingRow("Balance", hue: nil) {
+                        Text("\(grading.preset.balance)")
                             .monospacedDigit()
-                    } else {
-                        Text("—").foregroundStyle(.secondary)
+                            .foregroundStyle(grading.preset.balance == 0 ? .secondary : .primary)
+                    }
+                } else {
+                    Text("Needs colors with a harmony.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let grading = model.colorGrading {
+                if grading.toneBlacks != 0 || grading.toneShadows != 0 {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Selective Tone")
+                            .font(.subheadline.weight(.semibold))
+                        Text([grading.toneBlacks != 0 ? "Blacks \(grading.toneBlacks > 0 ? "+" : "")\(grading.toneBlacks)" : nil,
+                              grading.toneShadows != 0 ? "Shadows \(grading.toneShadows > 0 ? "+" : "")\(grading.toneShadows)" : nil]
+                            .compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption)
+                            .monospacedDigit()
                     }
                 }
-                gradingRow("Balance", hue: nil) {
-                    Text("\(grading.preset.balance)")
-                        .monospacedDigit()
-                        .foregroundStyle(grading.preset.balance == 0 ? .secondary : .primary)
-                }
-                if grading.toneBlacks != 0 || grading.toneShadows != 0 {
-                    Divider().padding(.vertical, 2)
-                    Text("Selective Tone")
-                        .font(.subheadline.weight(.semibold))
-                    Text([grading.toneBlacks != 0 ? "Blacks \(grading.toneBlacks > 0 ? "+" : "")\(grading.toneBlacks)" : nil,
-                          grading.toneShadows != 0 ? "Shadows \(grading.toneShadows > 0 ? "+" : "")\(grading.toneShadows)" : nil]
-                        .compactMap { $0 }.joined(separator: " · "))
-                        .font(.caption)
-                        .monospacedDigit()
-                }
+                Divider()
                 hslSection
-            } else {
-                Text("Needs colors with a harmony.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -634,8 +650,7 @@ struct ColorWheelView: View {
     @ViewBuilder
     private var hslSection: some View {
         let channels = model.hslSuggestions
-        VStack(alignment: .leading, spacing: 4) {
-            Divider().padding(.vertical, 2)
+        VStack(alignment: .leading, spacing: 8) {
             Text("HSL: Hue per channel")
                 .font(.subheadline.weight(.semibold))
             if model.effectiveGradingTarget == .emphasize {

@@ -35,6 +35,8 @@ struct ColorAnalyzeApp: App {
                 Button("Export Color Palette as Swatches (.ase)…") { delegate.model.presentExportPanel(.swatches) }
                 Button("Export Color Palette as PNG…") { delegate.model.presentExportPanel(.palettePNG) }
                 Button("Export DxO Color Grading Preset…") { delegate.model.presentExportPanel(.dxoPreset) }
+                Button("Export Graded Photo as TIFF…") { delegate.model.presentGradedPhotoPanel(.tiff) }
+                Button("Export Graded Photo as JPEG…") { delegate.model.presentGradedPhotoPanel(.jpeg) }
             }
             CommandGroup(after: .toolbar) {
                 Divider()
@@ -157,8 +159,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `ColorAnalyze photo.jpg [--graded graded.jpg] [--reference look.jpg] [--add-missing N] [--export-report report.png]
         //     [--export-colors list.csv|list.json] [--export-colors-excel list.csv]
         //     [--weighting off|moderate|strong] [--wheel rgb|ryb|dxo|oklch] [--intention "warm, calm"]
-        //     [--export-dxo-preset grading.preset] [--grading-strength subtle|moderate|strong] [--grading-style neutral|warm-highlights|cool-highlights|teal-orange|warm-overall|cool-overall|faded]
-        //     [--grading-target harmony|series|reference] [--protect 2,5] [--harmony-sector exact|narrow|wide] [--protect-skin on|off]`
+        //     [--export-dxo-preset grading.preset] [--grading-amount 0-3] [--grading-style neutral|warm-highlights|cool-highlights|teal-orange|warm-overall|cool-overall|faded]
+        //     [--grading-target harmony|series|reference] [--protect 2,5] [--harmony-sector exact|narrow|wide|0-30] [--protect-skin on|off]`
         // `ColorAnalyze --series a.jpg b.jpg … [--series-colors N] [--palette-size N]
         //     [--export-series palette.csv|series.json] [--export-series-photos photos.csv]
         //     [--export-series-report overview.png]`
@@ -175,7 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var photo: String?, graded: String?, report: String?, reference: String?
         var photoColors: Int?
         var protectedNumbers: [Int] = []
-        var sector: HarmonySector?
+        var sector: Double?
         var protectSkin: Bool?
         var problems: [String] = []
         /// Parses an enum-like option value; a wrong one is reported instead of silently ignored.
@@ -194,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var colorsPerPhoto: Int?, paletteSize: Int?
         var openSeriesPath: String?, saveSeriesPath: String?
         var intention: String?
-        var gradingStrength: ColorGradingSuggestion.Strength?
+        var gradingAmount: Double?
         var gradingStyle: GradingStyle?
         var gradingTarget: AnalysisModel.GradingTarget?
         while i < argv.count {
@@ -210,7 +212,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return numbers.count == text.split(separator: ",").count ? numbers : nil
                 } ?? []
             case "--protect-skin": protectSkin = choice(arg) { ["on": true, "off": false][$0.lowercased()] }
-            case "--harmony-sector": sector = choice(arg) { HarmonySector(rawValue: $0.lowercased()) }
+            case "--harmony-sector": sector = choice(arg) {
+                switch $0.lowercased() {
+                case "exact": 0
+                case "narrow": 10
+                case "wide": 20
+                default: Double($0).flatMap { (0...30).contains($0) ? $0 : nil }
+                }
+            }
             case "--colors": photoColors = choice(arg) { Int($0).flatMap { (3...12).contains($0) ? $0 : nil } }
             case "--weighting": weighting = choice(arg) { Weighting(rawValue: $0.lowercased()) }
             case "--wheel": wheel = choice(arg) { HueSpace(rawValue: $0.lowercased()) }
@@ -218,8 +227,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "--export-colors": if let path = value() { colors.append((path, nil)) }
             case "--export-colors-excel": if let path = value() { colors.append((path, .colorsCSVExcel)) }
             case "--export-dxo-preset": if let path = value() { colors.append((path, .dxoPreset)) }
-            case "--grading-strength":
-                gradingStrength = choice(arg) { ColorGradingSuggestion.Strength(rawValue: $0.lowercased()) }
+            case "--grading-amount":
+                gradingAmount = choice(arg) { Double($0).flatMap { (0...3).contains($0) ? $0 : nil } }
             case "--grading-style":
                 gradingStyle = choice(arg) { text in
                     GradingStyle.allCases.first { $0.rawValue.lowercased() == text.lowercased().replacingOccurrences(of: "-", with: "") }
@@ -259,13 +268,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.withoutRemembering {
                 model.colorCount = 6
                 model.hueSpace = .rgb
-                model.harmonySector = .narrow
+                model.harmonySector = 10
                 model.protectSkin = true
                 model.weighting = .off
                 model.gradingStyle = .neutral
                 model.showPreview = false
             }
-            model.useGradingStrength(.moderate)
+            model.withoutRemembering { model.gradingAmount = 1 }
         }
         for path in [photo, graded, reference].compactMap({ $0 }) + seriesFiles + [openSeriesPath].compactMap({ $0 })
         where !exists(path) { problems.append("file not found: \(path)") }
@@ -320,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for number in protectedNumbers where model.markers.indices.contains(number - 1) && !model.isProtected(model.markers[number - 1]) {
                 model.toggleProtected(model.markers[number - 1].id)
             }
-            if let gradingStrength { model.useGradingStrength(gradingStrength) }
+            if let gradingAmount { model.withoutRemembering { model.gradingAmount = gradingAmount } }
             if let gradingStyle { model.withoutRemembering { model.gradingStyle = gradingStyle } }
             if let gradingTarget { model.gradingTarget = gradingTarget }
             // Problems that the windows show in an alert (a subject that was not found, photos that could not be read)

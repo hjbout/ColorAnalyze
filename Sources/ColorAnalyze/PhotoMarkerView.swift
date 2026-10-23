@@ -43,6 +43,7 @@ struct PhotoMarkerView: View {
                             // The region still shows while a marker is selected or dragged.
                             .gesture(dragGesture(for: marker, in: rect))
                             .contextMenu {
+                                ReferenceMatchMenu(markerID: marker.id)
                                 Button(model.isProtected(marker) ? "Unprotect Color \(index + 1)" : "Protect Color \(index + 1) (keep its hue)") { model.toggleProtected(marker.id) }
                                 Button("Remove Marker \(index + 1)") { model.removeMarker(marker.id) }
                             }
@@ -251,8 +252,8 @@ struct PhotoMarkerView: View {
     @ViewBuilder
     private func sampleAid(rect: CGRect) -> some View {
         if let id = model.selectedMarkerID, let marker = model.markers.first(where: { $0.id == id }) {
-            let r = model.sampleRadius * min(rect.width, rect.height)
-            if r >= 8 {
+            let r = marker.sampleRadius * min(rect.width, rect.height)
+            if r >= 4 {
                 ZStack {
                     Circle()
                         .strokeBorder(.black.opacity(0.55), lineWidth: 3.5)

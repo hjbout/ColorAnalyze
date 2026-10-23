@@ -58,7 +58,7 @@ public struct HarmonyInput: Sendable {
 /// Colors never change; only the *position* of a hue on the wheel does, via a piecewise-linear
 /// map through the anchors of the 12-step artist's wheel (or, for `dxo` and `oklch`, through one point per degree).
 public enum HueSpace: String, CaseIterable, Identifiable, Sendable {
-    case rgb, ryb, dxo, oklch
+    case rgb, ryb, dxo, oklch, lab, munsell, itten
 
     public var id: String { rawValue }
     public var displayName: String {
@@ -67,6 +67,9 @@ public enum HueSpace: String, CaseIterable, Identifiable, Sendable {
         case .ryb: "RYB"
         case .dxo: "DxO"
         case .oklch: "OKLCH"
+        case .lab: "CIELAB"
+        case .munsell: "Munsell"
+        case .itten: "Itten"
         }
     }
 
@@ -91,6 +94,24 @@ public enum HueSpace: String, CaseIterable, Identifiable, Sendable {
         let lab = SRGBColor.fromHSB(h: hue, s: 1, b: 1).oklab
         return ColorMath.normalizeDegrees(Double(atan2(lab.z, lab.y)) * 180 / .pi)
     }
+    /// CIELAB hue angle (atan2 of b*, a*, D65) of the pure color.
+    private static let labAnchors = anchors { hue in
+        let l = SRGBColor.fromHSB(h: hue, s: 1, b: 1).linear
+        let x = (0.4124564 * l.x + 0.3575761 * l.y + 0.1804375 * l.z) / 0.95047
+        let y = 0.2126729 * l.x + 0.7151522 * l.y + 0.0721750 * l.z
+        let z = (0.0193339 * l.x + 0.1191920 * l.y + 0.9503041 * l.z) / 1.08883
+        func f(_ t: Float) -> Float { t > 216.0 / 24389 ? cbrt(t) : (24389.0 / 27 * t + 16) / 116 }
+        return ColorMath.normalizeDegrees(Double(atan2(200 * (f(y) - f(z)), 500 * (f(x) - f(y)))) * 180 / .pi)
+    }
+    /// sRGB hue of the 40 Munsell hues 2.5R … 10RP (steps of 2.5, i.e. 9° on the wheel, 5R at 18°) at value 6 and the highest
+    /// chroma (up to 10) that fits sRGB, from the Munsell renotation (Python ), and their position on the wheel.
+    private static let munsellRGBAnchors: [Double] = [0.0, 5.1, 12.9, 19.2, 25.9, 31.9, 37.8, 44.0, 45.7, 50.6, 55.3, 63.0, 70.6, 89.8, 116.6, 149.8, 158.6, 165.0, 170.2, 174.8, 179.9, 184.7, 189.0, 192.8, 193.7, 199.2, 200.5, 209.1, 217.0, 232.6, 249.5, 264.2, 276.4, 293.9, 308.8, 320.9, 332.2, 339.2, 345.8, 351.8, 357.9, 360.0]
+    private static let munsellAnchors: [Double] = [20.6, 27.0, 36.0, 45.0, 54.0, 63.0, 72.0, 81.0, 90.0, 99.0, 108.0, 117.0, 126.0, 135.0, 144.0, 153.0, 162.0, 171.0, 180.0, 189.0, 198.0, 207.0, 216.0, 225.0, 234.0, 243.0, 252.0, 261.0, 270.0, 279.0, 288.0, 297.0, 306.0, 315.0, 324.0, 333.0, 342.0, 351.0, 360.0, 369.0, 378.0, 380.6]
+    /// sRGB hue of the twelve colors of Itten's printed wheel (red, red-orange, orange, yellow-orange, yellow, yellow-green,
+    /// green, blue-green, blue, blue-violet, violet, red-violet; 30° apart, red at 0°). Itten's yellow is warm, his
+    /// blue is a deep ultramarine and his green sits nearer yellow than the sRGB green does.
+    private static let ittenRGBAnchors: [Double] = [0, 12, 28, 41, 55, 90, 130, 185, 220, 255, 285, 325, 355, 360]
+    private static let ittenAnchors: [Double] = [8.8, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360, 368.8]
     private static let degreeAnchors: [Double] = (0...360).map(Double.init)
 
     /// sRGB hue (°) and its position on the RYB wheel (°) for red, orange, yellow, green,
@@ -105,6 +126,9 @@ public enum HueSpace: String, CaseIterable, Identifiable, Sendable {
         case .ryb: Self.interpolate(ColorMath.normalizeDegrees(hue), from: Self.rgbAnchors, to: Self.rybAnchors)
         case .dxo: Self.interpolate(ColorMath.normalizeDegrees(hue), from: Self.degreeAnchors, to: Self.dxoAnchors)
         case .oklch: Self.interpolate(ColorMath.normalizeDegrees(hue), from: Self.degreeAnchors, to: Self.oklchAnchors)
+        case .lab: Self.interpolate(ColorMath.normalizeDegrees(hue), from: Self.degreeAnchors, to: Self.labAnchors)
+        case .munsell: Self.interpolate(ColorMath.normalizeDegrees(hue), from: Self.munsellRGBAnchors, to: Self.munsellAnchors)
+        case .itten: Self.interpolate(ColorMath.normalizeDegrees(hue), from: Self.ittenRGBAnchors, to: Self.ittenAnchors)
         }
     }
 
@@ -119,13 +143,19 @@ public enum HueSpace: String, CaseIterable, Identifiable, Sendable {
             return Self.inverse(position, anchors: Self.dxoAnchors)
         case .oklch:
             return Self.inverse(position, anchors: Self.oklchAnchors)
+        case .lab:
+            return Self.inverse(position, anchors: Self.labAnchors)
+        case .munsell:
+            return Self.inverse(position, anchors: Self.munsellAnchors, to: Self.munsellRGBAnchors)
+        case .itten:
+            return Self.inverse(position, anchors: Self.ittenAnchors, to: Self.ittenRGBAnchors)
         }
     }
 
-    private static func inverse(_ position: Double, anchors: [Double]) -> Double {
+    private static func inverse(_ position: Double, anchors: [Double], to: [Double]? = nil) -> Double {
         var v = ColorMath.normalizeDegrees(position)
         if v < anchors[0] { v += 360 }
-        return interpolate(v, from: anchors, to: degreeAnchors)
+        return interpolate(v, from: anchors, to: to ?? degreeAnchors)
     }
 
     private static func interpolate(_ v: Double, from xs: [Double], to ys: [Double]) -> Double {

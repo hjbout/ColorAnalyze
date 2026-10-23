@@ -17,9 +17,16 @@ public struct Session: Codable, Sendable, Equatable {
         public var isProtected: Bool?
         /// sRGB hue the color was aimed at by hand; nil = the automatic target.
         public var targetHue: Double?
+        /// Number (0-based) of the reference palette color chosen by hand for this color; nil = the nearest one.
+        public var referenceIndex: Int?
+        /// Radius the color is averaged over, as a fraction of the photo's short side; nil = the default.
+        public var sampleRadius: Double?
 
-        public init(x: Double, y: Double, hex: String, isProtected: Bool? = nil, targetHue: Double? = nil) {
+        public init(x: Double, y: Double, hex: String, isProtected: Bool? = nil, targetHue: Double? = nil,
+                    referenceIndex: Int? = nil, sampleRadius: Double? = nil) {
+            self.sampleRadius = sampleRadius
             self.targetHue = targetHue
+            self.referenceIndex = referenceIndex
             self.x = x
             self.y = y
             self.hex = hex

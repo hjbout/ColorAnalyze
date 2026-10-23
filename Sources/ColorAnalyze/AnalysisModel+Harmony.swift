@@ -27,7 +27,7 @@ extension AnalysisModel {
 
     var harmony: HarmonyFit? {
         let inputs = harmonyInputs
-        let tolerance = harmonySector.tolerance
+        let tolerance = harmonySector
         let kind = harmonyChoice ?? HarmonyDetector.detect(inputs, space: hueSpace, tolerance: tolerance)?.kind
         guard let kind else { return nil }
         if let rotation = harmonyRotationOverride {

@@ -69,6 +69,7 @@ struct ColorListView: View {
                         })
                         .contextMenu {
                             Button("Copy Hex") { copy(marker.color.hex) }
+                            ReferenceMatchMenu(markerID: marker.id)
                             Button(model.isProtected(marker) ? "Unprotect Color" : "Protect Color (keep its hue)") { model.toggleProtected(marker.id) }
                             Button("Remove Marker") { model.removeMarker(marker.id) }
                         }
@@ -104,6 +105,7 @@ struct ColorListView: View {
 }
 
 private struct ColorRow: View {
+    @Environment(AnalysisModel.self) private var model
     let number: Int
     let marker: Marker
     /// Set when the suggestions leave this color's hue alone.
@@ -203,6 +205,20 @@ private struct ColorRow: View {
             }
             .font(.caption)
 
+            if model.selectedMarkerID == marker.id {
+                HStack(spacing: 8) {
+                    Text("Sample size").font(.caption).foregroundStyle(.secondary)
+                    ResettableSlider(
+                        value: Binding(get: { marker.sampleRadius }, set: { model.setSampleRadius($0, for: marker.id) }),
+                        range: AnalysisModel.sampleRadiusRange, resetValue: AnalysisModel.defaultSampleRadius)
+                        .frame(maxWidth: .infinity)
+                        .help("How far around its spot this color is averaged. Double-click to return to the default.")
+                    Text(String(format: "%.1f%%", marker.sampleRadius * 100))
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 36, alignment: .trailing)
+                }
+            }
+
             if let after {
                 afterSummary(before: color, after: after)
             }
@@ -253,8 +269,8 @@ func seriesRowNote(_ info: SeriesRowInfo, noun: String = "series") -> (text: Str
     switch info {
     case .unmatched:
         return ("No close color in the \(noun) palette", .orange)
-    case .match(let m, let hex):
-        var parts = ["≈ palette \(m.index + 1) (\(hex))"]
+    case .match(let m, let hex, let chosen):
+        var parts = [chosen ? "→ palette \(m.index + 1) (\(hex), chosen)" : "≈ palette \(m.index + 1) (\(hex))"]
         if let hue = m.hueShift, abs(hue) >= 1 { parts.append("hue \(signedRounded(hue, unit: "°"))") }
         if abs(m.saturationChange) >= 2 { parts.append("sat \(signedRounded(m.saturationChange, unit: "%"))") }
         if abs(m.lightnessChange) >= 1 { parts.append("L* \(signedRounded(m.lightnessChange))") }

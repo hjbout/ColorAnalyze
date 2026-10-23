@@ -74,7 +74,7 @@ extension AnalysisModel {
         guard let i = markers.firstIndex(where: { $0.id == id }) else { return }
         let clamped = CGPoint(x: min(1, max(0, location.x)), y: min(1, max(0, location.y)))
         markers[i].location = clamped
-        markers[i].color = sample(at: clamped)
+        markers[i].color = sample(at: clamped, radius: markers[i].sampleRadius)
         updateShares()
         isDirty = true
     }
@@ -163,8 +163,24 @@ extension AnalysisModel {
         (markers.firstIndex { $0.id == id } ?? 0) + 1
     }
 
-    func sample(at location: CGPoint) -> SRGBColor {
-        image?.sampling.sample(at: location, radius: sampleRadius) ?? SRGBColor(r: 0, g: 0, b: 0)
+    func sample(at location: CGPoint, radius: Double = AnalysisModel.defaultSampleRadius) -> SRGBColor {
+        image?.sampling.sample(at: location, radius: radius) ?? SRGBColor(r: 0, g: 0, b: 0)
+    }
+
+    /// Sets how far around its spot a color is averaged (nil = the default) and samples it again.
+    func setSampleRadius(_ radius: Double?, for id: Marker.ID) {
+        guard let i = markers.firstIndex(where: { $0.id == id }) else { return }
+        let clamped = radius.map { min(Self.sampleRadiusRange.upperBound, max(Self.sampleRadiusRange.lowerBound, $0)) }
+        guard clamped != markers[i].customSampleRadius else { return }
+        // A drag on the slider is one undo step: only the first change after a pause registers one.
+        let now = Date()
+        if lastSampleRadiusChange.map({ now.timeIntervalSince($0) > 1 }) ?? true { registerMarkerUndo("Marker Size") }
+        lastSampleRadiusChange = now
+        markers[i].customSampleRadius = clamped
+        markers[i].color = sample(at: markers[i].location, radius: markers[i].sampleRadius)
+        updateShares()
+        isDirty = true
+        refreshPreview()
     }
 
     func updateShares() {

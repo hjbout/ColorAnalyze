@@ -18,6 +18,12 @@ struct Marker: Identifiable, Equatable {
     /// Set by dragging its target on the wheel: the sRGB hue this color is aimed at, instead of the harmony's (or the
     /// reference's) nearest target. It also beats the protection. nil = the automatic target.
     var targetHue: Double?
+    /// Set by hand: the reference palette color (0-based) this color is matched with, instead of the nearest one.
+    var referenceIndex: Int?
+    /// Set by hand: the radius its color is averaged over, as a fraction of the photo's short side. nil = the default.
+    var customSampleRadius: Double?
+
+    var sampleRadius: Double { customSampleRadius ?? AnalysisModel.defaultSampleRadius }
 
     /// Signed hue shift (sRGB degrees) from `hue` (default: the color's own) to the target set by hand, nil without one.
     func manualShift(fromHue hue: Double? = nil) -> Double? {
@@ -31,27 +37,6 @@ struct Marker: Identifiable, Equatable {
 }
 
 /// How much more the subject of the photo counts than the background.
-/// Width of the sector around each harmony target (Matsuda): colors inside it need no shift.
-enum HarmonySector: String, CaseIterable, Identifiable {
-    case exact, narrow, wide
-
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .exact: "Exact hue"
-        case .narrow: "Sector ±10°"
-        case .wide: "Sector ±20°"
-        }
-    }
-    /// Half-width in degrees.
-    var tolerance: Double {
-        switch self {
-        case .exact: 0
-        case .narrow: 10
-        case .wide: 20
-        }
-    }
-}
 
 enum Weighting: String, CaseIterable, Identifiable {
     case off, moderate, strong
@@ -141,7 +126,7 @@ enum ExportFormat {
 
 /// How one color of the current photo relates to the series palette.
 enum SeriesRowInfo {
-    case match(SeriesMatch, paletteHex: String)
+    case match(SeriesMatch, paletteHex: String, chosen: Bool)
     case unmatched
 }
 
@@ -177,22 +162,14 @@ final class AnalysisModel {
 
     // MARK: State of the extensions (stored properties cannot live in an extension)
 
-    /// How strongly the suggested tints are applied (the saturation of a wheel whose colors are 30° or more off).
-    var gradingStrength = ColorGradingSuggestion.Strength(rawValue: UserDefaults.standard.string(forKey: "gradingStrength") ?? "")
-        ?? .moderate {
-        didSet { if rememberGradingStrength { UserDefaults.standard.set(gradingStrength.rawValue, forKey: "gradingStrength") } }
-    }
-
-    @ObservationIgnored var rememberGradingStrength = true
-
     /// A creative direction on top of the harmony: warm highlights over cool shadows, or the reverse. Remembered.
     var gradingStyle = (AnalysisModel.remembered("gradingStyle") as String?).flatMap(GradingStyle.init(rawValue:)) ?? .neutral {
         didSet { if gradingStyle != oldValue { remember(gradingStyle.rawValue, as: "gradingStyle") } }
     }
 
-    /// How strongly the style is applied: 0 (none) to 2 (twice as designed), 1 as designed. Remembered.
-    var gradingStyleAmount = AnalysisModel.remembered("gradingStyleAmount") ?? 1.0 {
-        didSet { if gradingStyleAmount != oldValue { remember(gradingStyleAmount, as: "gradingStyleAmount") } }
+    /// How strongly the whole grading is applied: 0 (none) to 3, 1 as found (Moderate). Remembered.
+    var gradingAmount = AnalysisModel.remembered("gradingAmount") ?? 1.0 {
+        didSet { if gradingAmount != oldValue { remember(gradingAmount, as: "gradingAmount") } }
     }
 
     var gradingTarget = GradingTarget.harmony
@@ -206,6 +183,9 @@ final class AnalysisModel {
     /// Overrides the series palette while it is set. Stays when another photo is opened, so one reference can
     /// serve a whole batch; it is not part of the saved session.
     var referencePhoto: ReferencePhoto?
+
+    /// The reference palette color under the pointer in the reference panel; its area is lit up in the reference photo.
+    var hoveredReferenceIndex: Int?
 
     /// Shows the photo with the suggested Color Grading tints and HSL hue turns applied (right of the divider).
     var showPreview = AnalysisModel.remembered("showPreview") ?? false {
@@ -252,7 +232,7 @@ final class AnalysisModel {
 
     // MARK: Remembered settings
     //
-    // Colors, wheel, subject weighting, skin tone line, Color Grading strength and preview are remembered between launches
+    // Colors, wheel, subject weighting, skin tone line, Color Grading amount and preview are remembered between launches
     // (UserDefaults). A saved session of a photo overrides them for that photo, and a setting given on the command line
     // applies to that run only: neither changes what is remembered.
 
@@ -262,6 +242,24 @@ final class AnalysisModel {
         suppressRemembering += 1
         body()
         suppressRemembering -= 1
+    }
+    /// What a wheel preview must put back: the wheel it started from, with the harmony rotation and the edited flag.
+    @ObservationIgnored var wheelPreviewStash: (space: HueSpace, rotation: Double?, dirty: Bool)?
+    /// Shows a wheel without keeping it (`remember` false: hover in the menu) or keeps it. A preview that ends on the
+    /// wheel it began on puts back the rotation and the edited flag that switching wheels would have cleared.
+    func chooseWheel(_ space: HueSpace, remember: Bool) {
+        if remember {
+            wheelPreviewStash = nil
+            hueSpace = space
+            return
+        }
+        if wheelPreviewStash == nil { wheelPreviewStash = (hueSpace, harmonyRotationOverride, isDirty) }
+        withoutRemembering { hueSpace = space }
+        if let stash = wheelPreviewStash, stash.space == space {
+            harmonyRotationOverride = stash.rotation
+            isDirty = stash.dirty
+            wheelPreviewStash = nil
+        }
     }
     func remember(_ value: Any, as key: String) {
         if suppressRemembering == 0 { UserDefaults.standard.set(value, forKey: "setting." + key) }
@@ -284,8 +282,9 @@ final class AnalysisModel {
     }
     /// The wheel the harmony is computed and drawn on: RGB or the artist's RYB wheel.
     /// How wide the harmony's targets are: a color inside the sector counts as on target. Remembered.
-    var harmonySector = (AnalysisModel.remembered("harmonySector") as String?).flatMap(HarmonySector.init(rawValue:)) ?? .narrow {
-        didSet { if harmonySector != oldValue { remember(harmonySector.rawValue, as: "harmonySector") } }
+    /// Half-width of the sector in degrees (0 = exact hue).
+    var harmonySector: Double = AnalysisModel.remembered("harmonySectorDegrees") ?? 10 {
+        didSet { if harmonySector != oldValue { remember(harmonySector, as: "harmonySectorDegrees") } }
     }
 
     var hueSpace = (AnalysisModel.remembered("hueSpace") as String?).flatMap(HueSpace.init(rawValue:)) ?? .rgb {
@@ -372,8 +371,11 @@ final class AnalysisModel {
     /// The color whose target is being dragged on the wheel, so the drag is one undo step.
     @ObservationIgnored var draggingTargetID: Marker.ID?
 
-    /// Marker sample radius as a fraction of the photo's short side.
-    let sampleRadius = 0.015
+    /// When the sample size of a marker last changed (view state, see `dragStart`): a drag is one undo step.
+    @ObservationIgnored var lastSampleRadiusChange: Date?
+    /// Marker sample radius as a fraction of the photo's short side, and the range it can be set to per marker.
+    nonisolated static let defaultSampleRadius = 0.015
+    nonisolated static let sampleRadiusRange = 0.003...0.05
 
     // MARK: Region overlay
 
@@ -417,7 +419,7 @@ final class AnalysisModel {
 
     /// Color of the graded version at the marker's position.
     func afterColor(for marker: Marker) -> SRGBColor? {
-        if let afterImage { return afterImage.sampling.sample(at: marker.location, radius: sampleRadius) }
+        if let afterImage { return afterImage.sampling.sample(at: marker.location, radius: marker.sampleRadius) }
         return predictedColor(for: marker)
     }
 
@@ -463,7 +465,7 @@ final class AnalysisModel {
                 saliencyOverlay = nil
                 setWeights(nil)
                 compareMode = .split
-                gradingStyleAmount = 1   // every new photo starts with the style as designed
+                gradingAmount = 1   // every new photo starts with the grading as found
                 // Every new photo starts on the Harmony tab, whatever tab was open before.
                 UserDefaults.standard.set(PaneTab.harmony.rawValue, forKey: PaneTab.storageKey)
                 NSDocumentController.shared.noteNewRecentDocumentURL(url)
