@@ -20,6 +20,13 @@ struct ColorAnalyzeApp: App {
                     .keyboardShortcut("o")
                 Button("Open Graded Version…") { delegate.model.presentOpenPanel(graded: true) }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
+                Divider()
+                Button("Previous Photo in Folder") { delegate.model.stepPhoto(-1) }
+                    .keyboardShortcut("[")
+                    .disabled(delegate.model.image == nil || delegate.model.isAnalyzing)
+                Button("Next Photo in Folder") { delegate.model.stepPhoto(1) }
+                    .keyboardShortcut("]")
+                    .disabled(delegate.model.image == nil || delegate.model.isAnalyzing)
             }
             CommandGroup(replacing: .saveItem) {
                 Button("Save Session") { delegate.model.saveSession() }

@@ -55,6 +55,22 @@ struct ContentView: View {
                 .help("Open a photo (⌘O)")
 
                 Button {
+                    model.stepPhoto(-1)
+                } label: {
+                    Label("Previous Photo", systemImage: "chevron.left")
+                }
+                .disabled(model.image == nil || model.isAnalyzing)
+                .help("Previous photo in the folder (⌘[). Unsaved changes are saved as the session first.")
+
+                Button {
+                    model.stepPhoto(1)
+                } label: {
+                    Label("Next Photo", systemImage: "chevron.right")
+                }
+                .disabled(model.image == nil || model.isAnalyzing)
+                .help("Next photo in the folder (⌘]). Unsaved changes are saved as the session first.")
+
+                Button {
                     model.saveSession()
                 } label: {
                     Label("Save Session", systemImage: "square.and.arrow.down")
