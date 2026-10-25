@@ -88,7 +88,7 @@ extension AnalysisModel {
     func computeColorGrading(for setup: GradeVariant) -> ColorGradingSuggestion.Suggestion? {
         guard !markers.isEmpty else { return nil }
         var inputs: [ColorGradingSuggestion.Input] = []
-        let harmony = harmonyFit(choice: setup.harmony, rotation: setup.harmonyRotation)
+        let harmony = harmonyFit(choice: setup.harmony, rotation: setup.harmonyRotation, space: setup.hueSpace)
         switch effectiveTarget(setup.target, harmony: harmony) {
         case .emphasize:
             return ColorGradingSuggestion.optimizedEmphasis(markers.map { ($0.color, $0.share) }, strength: gradingStrength, style: setup.style, scale: setup.amount)
@@ -124,7 +124,7 @@ extension AnalysisModel {
 
     func hslSuggestions(for setup: GradeVariant) -> [HSLSuggestion.Channel] {
         guard !markers.isEmpty else { return [] }
-        let fit = harmonyFit(choice: setup.harmony, rotation: setup.harmonyRotation)
+        let fit = harmonyFit(choice: setup.harmony, rotation: setup.harmonyRotation, space: setup.hueSpace)
         let aim = effectiveTarget(setup.target, harmony: fit)
         return HSLSuggestion.channels(from: markers.enumerated().map { index, marker in
             let target: Double? = switch aim {

@@ -11,19 +11,42 @@ struct VariantStrip: View {
         let active = model.activeVariantID
         HStack(spacing: 10) {
             Text("Variants").font(.caption.weight(.medium))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Array(model.variants.enumerated()), id: \.element.id) { index, variant in
-                        chip(variant, number: index + 1, isActive: variant.id == active)
-                    }
-                    if model.variants.isEmpty {
-                        Text("Pin the current style, amount and aim to see it next to others.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 3)
+            Button {
+                model.stepVariant(-1)
+            } label: {
+                Image(systemName: "chevron.left")
             }
+            .buttonStyle(.borderless)
+            .disabled(model.variants.count < 2)
+            .help("Previous variant (⌥⌘[)")
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(model.variants.enumerated()), id: \.element.id) { index, variant in
+                            chip(variant, number: index + 1, isActive: variant.id == active)
+                                .id(variant.id)
+                        }
+                        if model.variants.isEmpty {
+                            Text("Pin the current style, amount and aim to see it next to others.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+                // Scrolls sideways with the trackpad, or shift + wheel; the arrows beside it step through the variants.
+                .onChange(of: active) { _, id in
+                    if let id { withAnimation { proxy.scrollTo(id, anchor: .center) } }
+                }
+            }
+            Button {
+                model.stepVariant(1)
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .buttonStyle(.borderless)
+            .disabled(model.variants.count < 2)
+            .help("Next variant (⌥⌘])")
             Toggle(isOn: $model.showVariantGrid) {
                 Label("Compare", systemImage: "square.grid.2x2")
             }
@@ -83,7 +106,7 @@ struct VariantStrip: View {
                 .disabled(isActive || model.colorGrading == nil)
             Button("Remove Variant") { model.removeVariant(variant.id) }
         }
-        .help("Amount \(amountText(variant)) · aimed at \(variant.target.rawValue)"
+        .help("Amount \(amountText(variant)) · aimed at \(variant.target.rawValue) · \(variant.hueSpace.displayName) wheel"
               + (preview?.caveats.isEmpty == false ? "\n" + (preview?.caveats.joined(separator: "\n") ?? "") : ""))
     }
 
@@ -104,6 +127,7 @@ struct VariantStrip: View {
 
     private func detail(_ variant: GradeVariant, _ preview: VariantPreview?) -> String {
         var text = "×" + amountText(variant)
+        if variant.hueSpace != .rgb { text += " · " + variant.hueSpace.displayName }
         if let before = preview?.fitBefore ?? variant.fitBefore, let after = preview?.fitAfter ?? variant.fitAfter {
             text += " · \(Int(before.rounded()))° → \(Int(after.rounded()))°"
         }
@@ -125,7 +149,16 @@ struct VariantGrid: View {
                 ForEach(Array(model.variants.enumerated()), id: \.element.id) { index, variant in
                     let preview = model.variantPreviews[variant.id]
                     cell(preview?.image, title: "\(index + 1) · \(variant.title)",
-                         detail: fit(preview), isActive: variant.id == active) { model.applyVariant(variant.id) }
+                         detail: [fit(preview), variant.hueSpace.displayName].compactMap { $0 }.joined(separator: " · "),
+                         isActive: variant.id == active) { model.applyVariant(variant.id) }
+                        .contextMenu {
+                            Button("Use This Variant") { model.applyVariant(variant.id) }
+                                .disabled(variant.id == active)
+                            Button("Update with Current Settings") { model.updateVariant(variant.id) }
+                                .disabled(variant.id == active || model.colorGrading == nil)
+                            Button("Remove Variant") { model.removeVariant(variant.id) }
+                        }
+                        .help(preview?.caveats.isEmpty == false ? preview?.caveats.joined(separator: "\n") ?? "" : "")
                 }
             }
             .padding(10)

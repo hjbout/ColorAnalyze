@@ -10,11 +10,14 @@ struct GradeVariant: Identifiable, Equatable {
     var target: AnalysisModel.GradingTarget
     var harmony: HarmonyKind?
     var harmonyRotation: Double?
+    /// The color wheel the harmony is computed on.
+    var hueSpace: HueSpace
     var fitBefore: Double?
     var fitAfter: Double?
 
     init(style: GradingStyle, amount: Double, target: AnalysisModel.GradingTarget, harmony: HarmonyKind?,
-         harmonyRotation: Double? = nil, fitBefore: Double? = nil, fitAfter: Double? = nil) {
+         harmonyRotation: Double? = nil, hueSpace: HueSpace = .rgb, fitBefore: Double? = nil, fitAfter: Double? = nil) {
+        self.hueSpace = hueSpace
         self.style = style
         self.amount = amount
         self.target = target
@@ -28,12 +31,14 @@ struct GradeVariant: Identifiable, Equatable {
         guard let style = GradingStyle(rawValue: session.style),
               let target = AnalysisModel.GradingTarget(rawValue: session.target) else { return nil }
         self.init(style: style, amount: session.amount, target: target, harmony: session.harmony.flatMap(HarmonyKind.init(rawValue:)),
-                  harmonyRotation: session.harmonyRotation, fitBefore: session.fitBefore, fitAfter: session.fitAfter)
+                  harmonyRotation: session.harmonyRotation,
+                  hueSpace: session.hueSpace.flatMap(HueSpace.init(rawValue:)) ?? .rgb, fitBefore: session.fitBefore, fitAfter: session.fitAfter)
     }
 
     var session: Session.Variant {
         .init(style: style.rawValue, amount: amount, target: target.rawValue, harmony: harmony?.rawValue,
-              harmonyRotation: harmonyRotation, fitBefore: fitBefore, fitAfter: fitAfter)
+              harmonyRotation: harmonyRotation, hueSpace: hueSpace == .rgb ? nil : hueSpace.rawValue,
+              fitBefore: fitBefore, fitAfter: fitAfter)
     }
 
     /// The style's name without a parenthetical ("Teal & orange (cinematic)" → "Teal & orange").
@@ -44,7 +49,7 @@ struct GradeVariant: Identifiable, Equatable {
     /// True when `other` steers the suggestion the same way (the fit it predicted does not count).
     func sameSetup(as other: GradeVariant) -> Bool {
         style == other.style && abs(amount - other.amount) < 0.001 && target == other.target && harmony == other.harmony
-            && harmonyRotation == other.harmonyRotation
+            && harmonyRotation == other.harmonyRotation && hueSpace == other.hueSpace
     }
 }
 
@@ -64,7 +69,7 @@ extension AnalysisModel {
     /// The choices the suggestion is built from right now, without the fit.
     var currentChoices: GradeVariant {
         GradeVariant(style: gradingStyle, amount: gradingAmount, target: gradingTarget, harmony: harmonyChoice,
-                     harmonyRotation: harmonyRotationOverride)
+                     harmonyRotation: harmonyRotationOverride, hueSpace: hueSpace)
     }
 
     /// The setup the suggestion is built from right now.
@@ -99,6 +104,7 @@ extension AnalysisModel {
         gradingStyle = variant.style
         gradingAmount = variant.amount
         gradingTarget = variant.target
+        if hueSpace != variant.hueSpace { hueSpace = variant.hueSpace }   // resets the rotation
         if harmonyChoice != variant.harmony { harmonyChoice = variant.harmony }   // resets the rotation
         harmonyRotationOverride = variant.harmonyRotation
     }
@@ -139,6 +145,7 @@ extension AnalysisModel {
             hasher.combine(variant.target.rawValue)
             hasher.combine(variant.harmony?.rawValue)
             hasher.combine(variant.harmonyRotation)
+            hasher.combine(variant.hueSpace.rawValue)
         }
         return hasher.finalize()
     }

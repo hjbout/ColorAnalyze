@@ -2285,7 +2285,7 @@ import Testing
 
 @Suite struct SessionVariantTests {
     @Test func variantsSurviveAWriteAndRead() throws {
-        let variants = [Session.Variant(style: "tealOrange", amount: 1.5, target: "harmony", harmony: nil, fitBefore: 15, fitAfter: 6)]
+        let variants = [Session.Variant(style: "tealOrange", amount: 1.5, target: "harmony", harmony: nil, hueSpace: "ryb", fitBefore: 15, fitAfter: 6)]
         let session = Session(photo: "a.jpg", colorCount: 6, markers: [], variants: variants)
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("variants-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }

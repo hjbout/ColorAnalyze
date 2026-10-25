@@ -48,17 +48,20 @@ public struct Session: Codable, Sendable, Equatable {
         public var harmony: String?
         /// Rotation of the harmony on the wheel, when it was turned by hand.
         public var harmonyRotation: Double?
+        /// `HueSpace` raw value of the color wheel the harmony is computed on; nil = RGB.
+        public var hueSpace: String?
         /// Predicted hue distance of the colors to their targets, before and after, when the variant was pinned.
         public var fitBefore: Double?
         public var fitAfter: Double?
 
         public init(style: String, amount: Double, target: String, harmony: String? = nil, harmonyRotation: Double? = nil,
-                    fitBefore: Double? = nil, fitAfter: Double? = nil) {
+                    hueSpace: String? = nil, fitBefore: Double? = nil, fitAfter: Double? = nil) {
             self.style = style
             self.amount = amount
             self.target = target
             self.harmony = harmony
             self.harmonyRotation = harmonyRotation
+            self.hueSpace = hueSpace
             self.fitBefore = fitBefore
             self.fitAfter = fitAfter
         }
