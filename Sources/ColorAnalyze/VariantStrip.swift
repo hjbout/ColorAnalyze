@@ -141,16 +141,25 @@ struct VariantGrid: View {
 
     var body: some View {
         let active = model.activeVariantID
+        GeometryReader { geo in
+        // In preview focus the grid is a fixed layout: 3 × 2 for a landscape photo, 4 × 1 for a portrait one.
+        let landscape = aspect >= 1
+        let focus = model.previewFocus
+        let columns = focus ? (landscape ? 3 : 4) : 0
+        let rows = focus ? (landscape ? 2 : 1) : 0
+        // Room for the caption line and the spacing between the rows.
+        let cellHeight: CGFloat? = focus ? max(60, (geo.size.height - 20 - CGFloat(rows - 1) * 10) / CGFloat(rows) - 24) : nil
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: focus ? Array(repeating: GridItem(.flexible(), spacing: 10), count: columns)
+                                     : [GridItem(.adaptive(minimum: 260), spacing: 10)], spacing: 10) {
                 if let original = model.image?.display {
-                    cell(original, title: "Original", detail: nil, isActive: false, action: nil)
+                    cell(original, title: "Original", detail: nil, isActive: false, maxHeight: cellHeight, action: nil)
                 }
                 ForEach(Array(model.variants.enumerated()), id: \.element.id) { index, variant in
                     let preview = model.variantPreviews[variant.id]
                     cell(preview?.image, title: "\(index + 1) · \(variant.title)",
                          detail: [fit(preview), variant.hueSpace.displayName].compactMap { $0 }.joined(separator: " · "),
-                         isActive: variant.id == active) { model.applyVariant(variant.id) }
+                         isActive: variant.id == active, maxHeight: cellHeight) { model.applyVariant(variant.id) }
                         .contextMenu {
                             Button("Use This Variant") { model.applyVariant(variant.id) }
                                 .disabled(variant.id == active)
@@ -162,6 +171,7 @@ struct VariantGrid: View {
                 }
             }
             .padding(10)
+        }
         }
         .background(Color(nsColor: .underPageBackgroundColor))
     }
@@ -217,10 +227,11 @@ struct VariantGrid: View {
         return "\(Int(before.rounded()))° → \(Int(after.rounded()))°"
     }
 
-    private func cell(_ image: CGImage?, title: String, detail: String?, isActive: Bool, action: (() -> Void)?) -> some View {
+    private func cell(_ image: CGImage?, title: String, detail: String?, isActive: Bool, maxHeight: CGFloat?, action: (() -> Void)?) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Color.secondary.opacity(image == nil ? 0.15 : 0)
                 .aspectRatio(aspect, contentMode: .fit)
+                .frame(maxHeight: maxHeight)
                 .overlay {
                     GeometryReader { geo in
                         // Every cell shows the same crop: they share the window's zoom and pan.
