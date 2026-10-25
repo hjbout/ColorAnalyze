@@ -21,7 +21,8 @@ extension AnalysisModel {
             compareMode: afterImage == nil ? nil : compareMode.rawValue,
             splitPosition: afterImage == nil ? nil : splitPosition,
             intention: intention,
-            reference: referencePhoto?.url.path
+            reference: referencePhoto?.url.path,
+            variants: variants.isEmpty ? nil : variants.map(\.session)
         )
     }
 
@@ -60,6 +61,7 @@ extension AnalysisModel {
         await prepareWeights()
         hueSpace = session.hueSpace.flatMap(HueSpace.init(rawValue:)) ?? .rgb
         intention = session.intention ?? ""
+        variants = (session.variants ?? []).compactMap(GradeVariant.init(session:))
         harmonyChoice = session.harmony.flatMap(HarmonyKind.init(rawValue:))
         harmonyRotationOverride = session.harmonyRotation
         markers = session.markers.map { saved in

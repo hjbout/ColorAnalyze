@@ -34,6 +34,33 @@ public struct Session: Codable, Sendable, Equatable {
         }
     }
 
+    /// A pinned grading setup to come back to and compare: the choices that steer the suggestion.
+    public struct Variant: Codable, Sendable, Equatable {
+        /// `GradingStyle` raw value.
+        public var style: String
+        public var amount: Double
+        /// `GradingTarget` raw value ("harmony", "series", "emphasize").
+        public var target: String
+        /// `HarmonyKind` raw value; nil = auto-detect.
+        public var harmony: String?
+        /// Rotation of the harmony on the wheel, when it was turned by hand.
+        public var harmonyRotation: Double?
+        /// Predicted hue distance of the colors to their targets, before and after, when the variant was pinned.
+        public var fitBefore: Double?
+        public var fitAfter: Double?
+
+        public init(style: String, amount: Double, target: String, harmony: String? = nil, harmonyRotation: Double? = nil,
+                    fitBefore: Double? = nil, fitAfter: Double? = nil) {
+            self.style = style
+            self.amount = amount
+            self.target = target
+            self.harmony = harmony
+            self.harmonyRotation = harmonyRotation
+            self.fitBefore = fitBefore
+            self.fitAfter = fitAfter
+        }
+    }
+
     public var version = Session.currentVersion
     public var savedAt: Date
     /// File name of the photo, as a sanity check.
@@ -56,11 +83,13 @@ public struct Session: Codable, Sendable, Equatable {
     public var intention: String?
     /// Absolute path of the reference photo whose palette the photo is aimed at, if one was loaded.
     public var reference: String?
+    /// Pinned grading variants, in the order they were pinned; nil = none.
+    public var variants: [Variant]?
 
     public init(savedAt: Date = Date(), photo: String, graded: String? = nil, colorCount: Int,
                 weighting: String? = nil, markers: [Marker], harmony: String? = nil, harmonyRotation: Double? = nil,
                 hueSpace: String? = nil, compareMode: String? = nil, splitPosition: Double? = nil,
-                intention: String? = nil, reference: String? = nil) {
+                intention: String? = nil, reference: String? = nil, variants: [Variant]? = nil) {
         self.savedAt = savedAt
         self.photo = photo
         self.graded = graded
@@ -74,6 +103,7 @@ public struct Session: Codable, Sendable, Equatable {
         self.splitPosition = splitPosition
         self.intention = Intention.cleaned(intention)
         self.reference = reference
+        self.variants = variants
     }
 
     public enum SessionError: LocalizedError {

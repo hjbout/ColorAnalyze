@@ -29,8 +29,10 @@ extension AnalysisModel {
 
     /// Where the grading really aims: the series palette only when it is available and shown, and the
     /// existing tints when there is no harmony to aim at (a photo of fog, dusk or in black and white).
-    var effectiveGradingTarget: GradingTarget {
-        switch gradingTarget {
+    var effectiveGradingTarget: GradingTarget { effectiveTarget(gradingTarget, harmony: harmony) }
+
+    func effectiveTarget(_ target: GradingTarget, harmony: HarmonyFit?) -> GradingTarget {
+        switch target {
         case .emphasize: return .emphasize
         case .series where isSeriesReferenceShown: return .series
         default: return harmony == nil ? .emphasize : .harmony
@@ -47,13 +49,26 @@ extension AnalysisModel {
     var colorGrading: ColorGradingSuggestion.Suggestion? {
         let key = suggestionKey
         if let cache = gradingCache, cache.key == key { return cache.grading }
-        let grading = computeColorGrading()
+        let grading = computeColorGrading(for: currentChoices)
         gradingCache = (key, grading)
         return grading
     }
 
     /// Everything the suggestion depends on, as one number: the markers, the harmony and the aim.
     var suggestionKey: Int {
+        var hasher = Hasher()
+        hasher.combine(markersKey)
+        hasher.combine(harmonyChoice?.rawValue)
+        hasher.combine(harmonyRotationOverride)
+        hasher.combine(gradingStyle.rawValue)
+        hasher.combine(gradingAmount)
+        hasher.combine(gradingTarget.rawValue)
+        return hasher.finalize()
+    }
+
+    /// What every grading setup depends on, whatever its style, amount, aim and harmony: the markers, the wheel, the sector
+    /// and the series or reference palette.
+    var markersKey: Int {
         var hasher = Hasher()
         for marker in markers {
             hasher.combine(marker.color.hex)
@@ -62,25 +77,21 @@ extension AnalysisModel {
             hasher.combine(marker.targetHue)
             hasher.combine(marker.referenceIndex)
         }
-        hasher.combine(harmonyChoice?.rawValue)
-        hasher.combine(harmonyRotationOverride)
         hasher.combine(hueSpace.rawValue)
         hasher.combine(harmonySector)
-        hasher.combine(gradingStyle.rawValue)
-        hasher.combine(gradingAmount)
-        hasher.combine(gradingTarget.rawValue)
         hasher.combine(isSeriesReferenceShown)
         hasher.combine(referencePhoto?.url.path)
         for color in seriesPalette { hasher.combine(color.color.hex) }
         return hasher.finalize()
     }
 
-    func computeColorGrading() -> ColorGradingSuggestion.Suggestion? {
+    func computeColorGrading(for setup: GradeVariant) -> ColorGradingSuggestion.Suggestion? {
         guard !markers.isEmpty else { return nil }
         var inputs: [ColorGradingSuggestion.Input] = []
-        switch effectiveGradingTarget {
+        let harmony = harmonyFit(choice: setup.harmony, rotation: setup.harmonyRotation)
+        switch effectiveTarget(setup.target, harmony: harmony) {
         case .emphasize:
-            return ColorGradingSuggestion.optimizedEmphasis(markers.map { ($0.color, $0.share) }, strength: gradingStrength, style: gradingStyle, scale: gradingAmount)
+            return ColorGradingSuggestion.optimizedEmphasis(markers.map { ($0.color, $0.share) }, strength: gradingStrength, style: setup.style, scale: setup.amount)
         case .harmony:
             guard let fit = harmony else { return nil }
             inputs = markers.map {
@@ -102,23 +113,25 @@ extension AnalysisModel {
                 }
             }
         }
-        return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: gradingStyle, scale: gradingAmount)
+        return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: setup.style, scale: setup.amount)
     }
 
     /// Per channel of PhotoLab's HSL tool, how far its Hue handle should turn (degrees on PhotoLab's ring;
     /// + = counter-clockwise), aimed like the Color Grading suggestion: at the harmony or at the reference
     /// palette. Nothing when the grading only strengthens the existing tints: there is no target to turn toward.
-    var hslSuggestions: [HSLSuggestion.Channel] {
+    var hslSuggestions: [HSLSuggestion.Channel] { hslSuggestions(for: currentChoices) }
+
+    func hslSuggestions(for setup: GradeVariant) -> [HSLSuggestion.Channel] {
         guard !markers.isEmpty else { return [] }
-        let aim = effectiveGradingTarget
-        let fit = harmony
+        let fit = harmonyFit(choice: setup.harmony, rotation: setup.harmonyRotation)
+        let aim = effectiveTarget(setup.target, harmony: fit)
         return HSLSuggestion.channels(from: markers.enumerated().map { index, marker in
             let target: Double? = switch aim {
             case .harmony: fit?.shift(for: marker.color.hsb.h)
             case .series: seriesMatch(for: marker)?.hueShift
             case .emphasize: nil
             }
-            let shift = (aim == .emphasize ? nil : marker.manualShift() ?? (isProtected(marker) ? nil : target)).map { $0 * gradingAmount }
+            let shift = (aim == .emphasize ? nil : marker.manualShift() ?? (isProtected(marker) ? nil : target)).map { $0 * setup.amount }
             return HSLSuggestion.Input(number: index + 1, color: marker.color, share: marker.share, hueShift: shift)
         })
     }

@@ -11,8 +11,19 @@ struct ContentView: View {
     var body: some View {
         @Bindable var model = model
         HSplitView {
-            PhotoMarkerView()
-                .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
+                if model.showVariantGrid {
+                    VariantGrid()
+                } else {
+                    PhotoMarkerView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                if model.image != nil && model.colorGrading != nil {
+                    Divider()
+                    VariantStrip()
+                }
+            }
+            .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
             // The wheel and the list keep the width they have at the smallest window; a bigger window gives the photo more room.
             ColorListView()
                 .frame(minWidth: 360, idealWidth: 360, maxWidth: 360, maxHeight: .infinity)

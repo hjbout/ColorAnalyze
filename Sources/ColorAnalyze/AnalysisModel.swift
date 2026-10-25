@@ -174,6 +174,19 @@ final class AnalysisModel {
 
     var gradingTarget = GradingTarget.harmony
 
+    /// Grading setups pinned to compare and come back to; saved in the session.
+    var variants: [GradeVariant] = []
+
+    /// What each pinned variant looks like on this photo; made in the background by the variant strip.
+    var variantPreviews: [GradeVariant.ID: VariantPreview] = [:]
+
+    /// Shows the variants side by side, instead of the photo with its markers.
+    var showVariantGrid = false {
+        didSet { if showVariantGrid && variants.isEmpty { showVariantGrid = false } }
+    }
+
+    @ObservationIgnored var variantSource: (image: CGImage, size: Int, buffer: PixelBuffer)?
+
     @ObservationIgnored var gradingCache: (key: Int, grading: ColorGradingSuggestion.Suggestion?)?
 
     @ObservationIgnored var predictionCache: (key: Int, settings: GradePreviewSettings?, plan: GradePreview.Plan?)?
@@ -459,6 +472,7 @@ final class AnalysisModel {
                 undoManager?.removeAllActions(withTarget: self)
                 afterImage = nil
                 intention = ""
+                variants = []
                 viewport.fit()
                 saliency = nil
                 saliencyFailed = false

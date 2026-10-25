@@ -25,12 +25,15 @@ extension AnalysisModel {
         }
     }
 
-    var harmony: HarmonyFit? {
+    var harmony: HarmonyFit? { harmonyFit(choice: harmonyChoice, rotation: harmonyRotationOverride) }
+
+    /// The harmony of the markers for a chosen kind (nil = detect) and rotation (nil = the best fit).
+    func harmonyFit(choice: HarmonyKind?, rotation rotationOverride: Double?) -> HarmonyFit? {
         let inputs = harmonyInputs
         let tolerance = harmonySector
-        let kind = harmonyChoice ?? HarmonyDetector.detect(inputs, space: hueSpace, tolerance: tolerance)?.kind
+        let kind = choice ?? HarmonyDetector.detect(inputs, space: hueSpace, tolerance: tolerance)?.kind
         guard let kind else { return nil }
-        if let rotation = harmonyRotationOverride {
+        if let rotation = rotationOverride {
             return HarmonyDetector.evaluate(kind, rotation: rotation, inputs: inputs, space: hueSpace, tolerance: tolerance)
                 ?? HarmonyFit(kind: kind, rotation: rotation, deviation: 0, space: hueSpace, tolerance: tolerance)
         }

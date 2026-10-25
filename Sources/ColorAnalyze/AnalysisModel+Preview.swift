@@ -25,18 +25,24 @@ extension AnalysisModel {
         }
         var result: (GradePreviewSettings, GradePreview.Plan)?
         if let grading = colorGrading {
-            func tint(_ wheel: ColorGradingPreset.Wheel) -> GradePreviewSettings.Tint {
-                .init(dxoHue: Double(wheel.hue), saturation: Double(wheel.saturation), luminance: Double(wheel.luminance))
-            }
-            var settings = GradePreviewSettings(shadows: tint(grading.preset.shadows), midtones: tint(grading.preset.midtones),
-                                                highlights: tint(grading.preset.highlights), master: tint(grading.preset.master),
-                                                balance: Double(grading.preset.balance),
-                                                toneBlacks: Double(grading.toneBlacks), toneShadows: Double(grading.toneShadows))
-            for channel in hslSuggestions { settings.hueShifts[channel.channel] = channel.hueShift }
+            let settings = gradeSettings(for: currentChoices, grading: grading)
             result = (settings, GradePreview.Plan(settings))
         }
         predictionCache = (key, result?.0, result?.1)
         return result
+    }
+
+    /// A grading setup's suggestion as settings of the calibrated model, as suggested (amount 1).
+    func gradeSettings(for setup: GradeVariant, grading: ColorGradingSuggestion.Suggestion) -> GradePreviewSettings {
+        func tint(_ wheel: ColorGradingPreset.Wheel) -> GradePreviewSettings.Tint {
+            .init(dxoHue: Double(wheel.hue), saturation: Double(wheel.saturation), luminance: Double(wheel.luminance))
+        }
+        var settings = GradePreviewSettings(shadows: tint(grading.preset.shadows), midtones: tint(grading.preset.midtones),
+                                            highlights: tint(grading.preset.highlights), master: tint(grading.preset.master),
+                                            balance: Double(grading.preset.balance),
+                                            toneBlacks: Double(grading.toneBlacks), toneShadows: Double(grading.toneShadows))
+        for channel in hslSuggestions(for: setup) { settings.hueShifts[channel.channel] = channel.hueShift }
+        return settings
     }
 
     /// What the preview image applies; nil while it is off or when there is nothing to suggest yet. Changes with the

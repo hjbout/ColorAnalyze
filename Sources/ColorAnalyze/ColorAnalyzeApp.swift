@@ -100,6 +100,17 @@ struct ColorAnalyzeApp: App {
                     .keyboardShortcut("g", modifiers: [])
                 Button("Toggle Preview of the Suggestion") { delegate.model.togglePreview() }
                     .keyboardShortcut("p", modifiers: [])
+                Button("Pin Current as Variant") { delegate.model.pinCurrentVariant() }
+                    .disabled(delegate.model.colorGrading == nil)
+                Toggle("Compare All Variants", isOn: Bindable(delegate.model).showVariantGrid)
+                    .disabled(delegate.model.variants.isEmpty)
+                Button("Previous Variant") { delegate.model.stepVariant(-1) }
+                    .keyboardShortcut("[", modifiers: [.command, .option])
+                    .disabled(delegate.model.variants.isEmpty)
+                Button("Next Variant") { delegate.model.stepVariant(1) }
+                    .keyboardShortcut("]", modifiers: [.command, .option])
+                    .disabled(delegate.model.variants.isEmpty)
+                Divider()
                 Button("Preview Amount ×1") { delegate.model.previewAmount = 1 }
                     .keyboardShortcut("1", modifiers: .option)
                 Button("Preview Amount ×2") { delegate.model.previewAmount = 2 }
