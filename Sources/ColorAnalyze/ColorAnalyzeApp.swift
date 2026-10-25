@@ -51,6 +51,8 @@ struct ColorAnalyzeApp: App {
                     .keyboardShortcut("=", modifiers: .command)
                 Button("Zoom Out") { delegate.model.zoomOut() }
                     .keyboardShortcut("-", modifiers: .command)
+                Button(delegate.model.previewFocus ? "Show Color Panels" : "Focus Preview") { delegate.model.previewFocus.toggle() }
+                    .keyboardShortcut("p", modifiers: [.command, .option])
                 Button("Fit Photo") { delegate.model.fitPhoto() }
                     .keyboardShortcut("0", modifiers: .command)
                 Button("Actual Pixels") { delegate.model.zoomToActualPixels() }

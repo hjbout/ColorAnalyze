@@ -166,6 +166,52 @@ struct VariantGrid: View {
         .background(Color(nsColor: .underPageBackgroundColor))
     }
 
+    /// Width over height of the photo, shared by all cells so they line up.
+    private var aspect: CGFloat {
+        guard let image = model.image?.display, image.height > 0 else { return 1.5 }
+        return CGFloat(image.width) / CGFloat(image.height)
+    }
+
+    /// Dragging moves every cell's photo while zoomed in.
+    private func panGesture(pane: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                guard model.viewport.isZoomed else { return }
+                if model.panStart == nil { model.panStart = model.viewport.pan }
+                guard let start = model.panStart else { return }
+                model.viewport.pan = CGSize(width: start.width + value.translation.width,
+                                            height: start.height + value.translation.height)
+                model.viewport = model.viewport.clamped(photoFit: pane, pane: pane)
+            }
+            .onEnded { _ in model.panStart = nil }
+    }
+
+    /// ⌘- or ⌥-scroll zooms around the pointer; plain scrolling moves the photos while zoomed in, else it scrolls the grid.
+    private func handleScroll(_ scroll: PaneEventCatcher.Scroll, at location: CGPoint, pane: CGSize) -> Bool {
+        if scroll.modifiers.contains(.command) || scroll.modifiers.contains(.option) {
+            let factor = exp(scroll.delta.height * (scroll.precise ? 0.01 : 0.08))
+            model.viewport.zoom(by: factor, anchor: anchorOffset(location, pane: pane))
+        } else if model.viewport.isZoomed {
+            let unit: CGFloat = scroll.precise ? 1 : 10
+            model.viewport.pan.width += scroll.delta.width * unit
+            model.viewport.pan.height += scroll.delta.height * unit
+        } else {
+            return false
+        }
+        model.viewport = model.viewport.clamped(photoFit: pane, pane: pane)
+        return true
+    }
+
+    private func handleMagnify(_ magnification: CGFloat, at location: CGPoint, pane: CGSize) -> Bool {
+        model.viewport.zoom(by: max(0.2, 1 + magnification), anchor: anchorOffset(location, pane: pane))
+        model.viewport = model.viewport.clamped(photoFit: pane, pane: pane)
+        return true
+    }
+
+    private func anchorOffset(_ location: CGPoint, pane: CGSize) -> CGPoint {
+        CGPoint(x: location.x - pane.width / 2, y: location.y - pane.height / 2)
+    }
+
     private func fit(_ preview: VariantPreview?) -> String? {
         guard let before = preview?.fitBefore, let after = preview?.fitAfter else { return nil }
         return "\(Int(before.rounded()))° → \(Int(after.rounded()))°"
@@ -173,13 +219,29 @@ struct VariantGrid: View {
 
     private func cell(_ image: CGImage?, title: String, detail: String?, isActive: Bool, action: (() -> Void)?) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Group {
-                if let image {
-                    Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit)
-                } else {
-                    Rectangle().fill(Color.secondary.opacity(0.15)).aspectRatio(1.5, contentMode: .fit)
+            Color.secondary.opacity(image == nil ? 0.15 : 0)
+                .aspectRatio(aspect, contentMode: .fit)
+                .overlay {
+                    GeometryReader { geo in
+                        // Every cell shows the same crop: they share the window's zoom and pan.
+                        let pane = geo.size
+                        let viewport = model.viewport.clamped(photoFit: pane, pane: pane)
+                        if let image {
+                            Image(decorative: image, scale: 1).resizable()
+                                .frame(width: pane.width * viewport.zoom, height: pane.height * viewport.zoom)
+                                .offset(viewport.pan)
+                                .frame(width: pane.width, height: pane.height)
+                        }
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .gesture(panGesture(pane: pane))
+                            .background(PaneEventCatcher(
+                                onScroll: { scroll, location in handleScroll(scroll, at: location, pane: pane) },
+                                onMagnify: { magnification, location in handleMagnify(magnification, at: location, pane: pane) },
+                                onArrow: { _, _ in false }
+                            ))
+                    }
                 }
-            }
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(isActive ? Color.accentColor : .clear, lineWidth: 3))
             HStack {

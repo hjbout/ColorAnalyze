@@ -184,6 +184,8 @@ final class AnalysisModel {
     var variantPreviews: [GradeVariant.ID: VariantPreview] = [:]
 
     /// Shows the variants side by side, instead of the photo with its markers.
+    /// Preview-focus mode: the color list and the wheel are hidden so the photo takes the whole window.
+    var previewFocus = false
     var showVariantGrid = false {
         didSet { if showVariantGrid && variants.isEmpty { showVariantGrid = false } }
     }

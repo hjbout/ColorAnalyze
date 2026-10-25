@@ -10,7 +10,8 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var model = model
-        HSplitView {
+        // Fixed-width side panels: a plain HStack, so the dividers do not show a resize cursor.
+        HStack(spacing: 0) {
             VStack(spacing: 0) {
                 if model.showVariantGrid {
                     VariantGrid()
@@ -25,12 +26,18 @@ struct ContentView: View {
             }
             .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
             // The wheel and the list keep the width they have at the smallest window; a bigger window gives the photo more room.
-            ColorListView()
-                .frame(minWidth: 360, idealWidth: 360, maxWidth: 360, maxHeight: .infinity)
-            ColorWheelView()
-                .frame(minWidth: 360, idealWidth: 360, maxWidth: 360, maxHeight: .infinity)
+            if !model.previewFocus {
+                Divider()
+                ColorListView()
+                    .frame(width: 360)
+                    .frame(maxHeight: .infinity)
+                Divider()
+                ColorWheelView()
+                    .frame(width: 360)
+                    .frame(maxHeight: .infinity)
+            }
         }
-        .frame(minWidth: 1100, minHeight: 640)
+        .frame(minWidth: model.previewFocus ? 480 : 1100, minHeight: 640)
         .onChange(of: series.windowRequest) { openWindow(id: "series") }
         .onAppear { model.undoManager = undoManager }
         .onChange(of: undoManager) { model.undoManager = undoManager }
@@ -138,6 +145,13 @@ struct ContentView: View {
 
             // View: what the photo shows.
             ToolbarItemGroup {
+                Button {
+                    model.previewFocus.toggle()
+                } label: {
+                    Label("Focus Preview", systemImage: model.previewFocus ? "rectangle.split.3x1" : "rectangle.leftthird.inset.filled")
+                }
+                .help("Hide the color list and wheel so the photo fills the window (⌥⌘P)")
+
                 Menu {
                     Button("Fit Photo") { model.fitPhoto() }
                     Button("Actual Pixels") { model.zoomToActualPixels() }
