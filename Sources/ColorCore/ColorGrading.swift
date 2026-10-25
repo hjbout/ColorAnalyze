@@ -91,11 +91,14 @@ public enum ColorGradingSuggestion {
         public var color: SRGBColor
         public var share: Double
         public var targetHue: Double
+        /// A color the user wants left as it is: the grading may not change it, not even for a style's cast.
+        public var isProtected: Bool
 
-        public init(color: SRGBColor, share: Double, targetHue: Double) {
+        public init(color: SRGBColor, share: Double, targetHue: Double, isProtected: Bool = false) {
             self.color = color
             self.share = share
             self.targetHue = targetHue
+            self.isProtected = isProtected
         }
     }
 

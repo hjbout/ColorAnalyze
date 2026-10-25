@@ -1920,6 +1920,35 @@ import Testing
         #expect(problem.meanErrors(p).after > fit.after + 3)
     }
 
+    /// How far (OKLab) a suggestion moves `color`, as the calibrated model predicts.
+    static func movement(of color: SRGBColor, by suggestion: ColorGradingSuggestion.Suggestion) -> Float {
+        func tint(_ w: ColorGradingPreset.Wheel) -> GradePreviewSettings.Tint {
+            .init(dxoHue: Double(w.hue), saturation: Double(w.saturation), luminance: Double(w.luminance))
+        }
+        let p = suggestion.preset
+        let settings = GradePreviewSettings(shadows: tint(p.shadows), midtones: tint(p.midtones), highlights: tint(p.highlights),
+                                            master: tint(p.master), balance: Double(p.balance),
+                                            toneBlacks: Double(suggestion.toneBlacks), toneShadows: Double(suggestion.toneShadows))
+        let lab = ColorMath.linearToOKLab(color.linear)
+        let graded = ColorMath.linearToOKLab(GradePreview.Plan(settings).applyLinear(linear: color.linear, lab: lab))
+        return ColorMath.distanceSquared(lab, graded).squareRoot()
+    }
+
+    @Test func aProtectedColorStaysPutUnderAStyle() {
+        let blue = SRGBColor.fromHSB(h: 215, s: 0.55, b: 0.6)
+        func scene(protected: Bool) -> [ColorGradingSuggestion.Input] {
+            [.init(color: blue, share: 0.3, targetHue: 215, isProtected: protected),
+             Self.input(100, 0.5, 0.45, share: 0.4, target: 120), Self.input(20, 0.45, 0.8, share: 0.3, target: 25)]
+        }
+        for style in [GradingStyle.warmOverall, .tealOrange, .coolHighlights] {
+            let free = ColorGradingSuggestion.optimized(from: scene(protected: false), strength: .moderate, style: style)
+            let held = ColorGradingSuggestion.optimized(from: scene(protected: true), strength: .moderate, style: style)
+            let freeMove = Self.movement(of: blue, by: free), heldMove = Self.movement(of: blue, by: held)
+            #expect(heldMove < freeMove, "\(style): free \(freeMove) held \(heldMove)")
+            #expect(heldMove < 0.02, "\(style): moved \(heldMove)")
+        }
+    }
+
     @Test func aProtectedColorAimedAtItsOwnHueIsLeftAlone() {
         let moved = [Self.input(100, 0.5, 0.45, share: 1, target: 130)]
         let protected = [Self.input(100, 0.5, 0.45, share: 1, target: 100)]

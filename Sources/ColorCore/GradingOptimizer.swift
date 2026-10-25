@@ -268,6 +268,8 @@ struct GradingProblem {
         var lightness: Float
         var target: Double
         var weight: Double
+        /// How firmly the color is held in place (0 = not at all): a protected color.
+        var hold: Double
         var range: TonalRange
     }
 
@@ -277,6 +279,8 @@ struct GradingProblem {
     static func maximumTone(_ cap: Double) -> Double { 2 * cap }
     /// Luminance may move as far as the strength allows Saturation; Balance up to this far.
     static let maximumBalance = 50.0
+    /// A protected color that moves 0.03 in OKLab (a visible change) costs this many times its share, on top of the rest.
+    static let holdFactor = 25.0
 
     let items: [Item]
     let style: GradingStyle
@@ -348,7 +352,9 @@ struct GradingProblem {
             let linear = input.color.linear
             let lab = ColorMath.linearToOKLab(linear)
             items.append(Item(linear: linear, lab: lab, hue: input.color.hsb.h, chroma: (lab.y * lab.y + lab.z * lab.z).squareRoot(),
-                              lightness: lab.x, target: input.targetHue, weight: weight, range: DxOMapping.tonalRange(for: input.color)))
+                              lightness: lab.x, target: input.targetHue, weight: weight,
+                              hold: input.isProtected ? Self.holdFactor * max(input.share, 0.03) : 0,
+                              range: DxOMapping.tonalRange(for: input.color)))
         }
         self.items = items
         self.totalWeight = items.reduce(0) { $0 + $1.weight }
@@ -372,13 +378,13 @@ struct GradingProblem {
     }
 
     /// Distance in hue (degrees) of one item's graded color from its target; a color that lost its hue counts as 45°.
-    private func hueError(_ item: Item, plan: GradePreview.Plan) -> (error: Double, chroma: Float, lightness: Float) {
+    private func hueError(_ item: Item, plan: GradePreview.Plan) -> (error: Double, chroma: Float, lightness: Float, moved: Float) {
         let linear = plan.applyLinear(linear: item.linear, lab: item.lab)
         let lab = ColorMath.linearToOKLab(linear)
         let color = SRGBColor(linear: linear).clamped
         let hsb = color.hsb
         let error = hsb.s < 0.03 ? 45 : abs(ColorMath.signedAngle(from: hsb.h, to: item.target))
-        return (error, (lab.y * lab.y + lab.z * lab.z).squareRoot(), lab.x)
+        return (error, (lab.y * lab.y + lab.z * lab.z).squareRoot(), lab.x, simd_length(lab - item.lab))
     }
 
     /// What is minimized: hue distance to the targets, with penalties for losing chroma or changing lightness,
@@ -392,6 +398,10 @@ struct GradingProblem {
             let dLight = Double(after.lightness - item.lightness) / 0.1
             let e = after.error / 30
             total += item.weight * (e * e + dChroma * dChroma + 0.5 * dLight * dLight)
+            if item.hold > 0 {
+                let moved = Double(after.moved) / 0.03
+                total += item.hold * moved * moved
+            }
         }
         // A grey that picks up chroma 0.03 (a visible cast) costs as much as 30° of hue error.
         for neutral in neutrals {

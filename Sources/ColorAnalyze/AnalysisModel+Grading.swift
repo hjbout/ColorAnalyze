@@ -97,7 +97,8 @@ extension AnalysisModel {
             inputs = markers.map {
                 let hue = $0.color.hsb.h
                 if let target = $0.targetHue { return .init(color: $0.color, share: $0.share, targetHue: target) }
-                return .init(color: $0.color, share: $0.share, targetHue: isProtected($0) ? hue : hue + fit.shift(for: hue))
+                return .init(color: $0.color, share: $0.share, targetHue: isProtected($0) ? hue : hue + fit.shift(for: hue),
+                             isProtected: isProtected($0))
             }
         case .series:
             for marker in markers {
@@ -107,7 +108,7 @@ extension AnalysisModel {
                 } else if let target = marker.targetHue {
                     inputs.append(.init(color: marker.color, share: marker.share, targetHue: target))
                 } else if isProtected(marker) {
-                    inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h))
+                    inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h, isProtected: true))
                 } else if let shift = seriesMatch(for: marker)?.hueShift {
                     inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h + shift))
                 }
