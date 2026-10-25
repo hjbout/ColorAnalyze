@@ -63,6 +63,9 @@ struct ColorAnalyzeApp: App {
                 Button("Deselect Color") { delegate.model.selectedMarkerID = nil }
                     .keyboardShortcut(.escape, modifiers: [])
                     .disabled(delegate.model.selectedMarkerID == nil)
+                Button("Re-analyze") { delegate.model.analyze() }
+                    .keyboardShortcut("r")
+                    .disabled(delegate.model.image == nil)
                 Divider()
                 Picker("Subject Weighting", selection: Bindable(delegate.model).weighting) {
                     ForEach(Weighting.allCases) { Text($0.title).tag($0) }
@@ -77,6 +80,8 @@ struct ColorAnalyzeApp: App {
                 }
             }
             CommandMenu("Compare") {
+                Button("Open Graded Version…") { delegate.model.presentOpenPanel(graded: true) }
+                    .disabled(delegate.model.image == nil)
                 Button("Open Reference Photo…") { delegate.model.presentOpenReferencePanel() }
                     .keyboardShortcut("r", modifiers: [.command, .option])
                 Button("Remove Reference Photo") { delegate.model.clearReference() }
@@ -84,7 +89,7 @@ struct ColorAnalyzeApp: App {
                 Divider()
                 Button("Toggle Before / After") { delegate.model.toggleBeforeAfter() }
                     .keyboardShortcut("\\", modifiers: [])
-                Button("Toggle Regions") { delegate.model.showRegions.toggle() }
+                Toggle("Show Regions", isOn: Bindable(delegate.model).showRegions)
                     .keyboardShortcut("g", modifiers: [])
                 Button("Toggle Preview of the Suggestion") { delegate.model.togglePreview() }
                     .keyboardShortcut("p", modifiers: [])
@@ -99,6 +104,7 @@ struct ColorAnalyzeApp: App {
                     set: { delegate.model.previewLayout = $0 ? .stacked : .split }))
                 Divider()
                 Button("Close Comparison") { delegate.model.clearGraded() }
+                    .disabled(delegate.model.afterImage == nil)
             }
         }
 

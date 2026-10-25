@@ -89,15 +89,6 @@ struct ContentView: View {
                              help: "Number of dominant colors to find")
                     .disabled(model.image == nil)
 
-                Button {
-                    model.analyze()
-                } label: {
-                    Label("Re-analyze", systemImage: "arrow.clockwise")
-                }
-                .keyboardShortcut("r")
-                .disabled(model.image == nil)
-                .help("Run the analysis again and reset all markers (⌘R)")
-
                 Menu {
                     Picker("Subject Weighting", selection: $model.weighting) {
                         ForEach(Weighting.allCases) { Text($0.title).tag($0) }
@@ -116,50 +107,22 @@ struct ContentView: View {
 
             // View: what the photo shows.
             ToolbarItemGroup {
-                Button {
-                    model.zoomOut()
-                } label: {
-                    Label("Zoom Out", systemImage: "minus.magnifyingglass")
-                }
-                .disabled(model.image == nil || !model.viewport.isZoomed)
-                .help("Zoom out (⌘−)")
-
                 Menu {
                     Button("Fit Photo") { model.fitPhoto() }
                     Button("Actual Pixels") { model.zoomToActualPixels() }
+                    Divider()
+                    Button("Zoom In") { model.zoomIn() }
+                    Button("Zoom Out") { model.zoomOut() }
+                        .disabled(!model.viewport.isZoomed)
                     Divider()
                     ForEach([2, 4, 8, 16], id: \.self) { level in
                         Button("\(level)×") { model.setZoomLevel(CGFloat(level)) }
                     }
                 } label: {
-                    Text(model.zoomLabel)
-                        .monospacedDigit()
-                        .frame(minWidth: 34)
+                    Label(model.zoomLabel, systemImage: "magnifyingglass")
                 }
                 .disabled(model.image == nil)
-                .help("Zoom level. Pinch, ⌘-scroll or the menu zoom in; scroll or drag moves the photo.")
-
-                Button {
-                    model.zoomIn()
-                } label: {
-                    Label("Zoom In", systemImage: "plus.magnifyingglass")
-                }
-                .disabled(model.image == nil)
-                .help("Zoom in to place markers precisely (⌘+)")
-
-                Toggle(isOn: $model.showRegions) {
-                    Label("Regions", systemImage: "circle.dashed.inset.filled")
-                }
-                .disabled(model.image == nil)
-                .help("Dim everything except the area of the hovered or selected color")
-
-                Button {
-                    model.presentOpenPanel(graded: true)
-                } label: {
-                    Label("Compare", systemImage: "square.split.2x1")
-                }
-                .disabled(model.image == nil)
-                .help("Load the graded version of this photo to compare (⇧⌘O)")
+                .help("Zoom level (⌘+ / ⌘− / ⌘0). Pinch or ⌘-scroll zooms; scroll or drag moves the photo.")
 
                 if model.afterImage != nil {
                     Picker("View", selection: $model.compareMode) {
@@ -197,14 +160,15 @@ struct ContentView: View {
                 .disabled(model.image == nil || model.isAnalyzing)
                 .help("Add a marker on the color that no marker represents yet — a small subject or accent the analysis passed over (⌥⌘M)")
 
-                Button {
-                    model.removeMarker(model.selectedMarkerID)
-                } label: {
-                    Label("Remove Marker", systemImage: "minus.circle")
+                if model.selectedMarkerID != nil {
+                    Button {
+                        model.removeMarker(model.selectedMarkerID)
+                    } label: {
+                        Label("Remove Marker", systemImage: "minus.circle")
+                    }
+                    .keyboardShortcut(.delete, modifiers: [])
+                    .help("Remove the selected marker (⌫)")
                 }
-                .keyboardShortcut(.delete, modifiers: [])
-                .disabled(model.selectedMarkerID == nil)
-                .help("Remove the selected marker (⌫)")
             }
 
             ToolbarGap()
