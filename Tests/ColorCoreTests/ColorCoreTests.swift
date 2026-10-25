@@ -2235,3 +2235,21 @@ import Testing
         #expect((props[kCGImagePropertyTIFFDictionary] as? [CFString: Any])?[kCGImagePropertyTIFFMake] as? String == "TestCam")
     }
 }
+
+@Suite struct GradePreviewCaveatsTests {
+    @Test func measuredSettingsHaveNoCaveats() {
+        let settings = GradePreviewSettings(shadows: .init(dxoHue: 231, saturation: 30), hueShifts: [.red: 20])
+        #expect(settings.modelCaveats.isEmpty)
+    }
+
+    @Test func exaggeratedTintsLeaveTheMeasuredRange() {
+        var settings = GradePreviewSettings(shadows: .init(dxoHue: 231, saturation: 30))
+        settings.amount = 4
+        #expect(settings.modelCaveats.count == 1)
+    }
+
+    @Test func masterAndLargeHueTurnAreFlagged() {
+        let settings = GradePreviewSettings(hueShifts: [.green: 45], master: .init(dxoHue: 36, saturation: 20))
+        #expect(settings.modelCaveats.count == 2)
+    }
+}

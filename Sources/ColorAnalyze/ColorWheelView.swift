@@ -538,6 +538,7 @@ struct ColorWheelView: View {
     @ViewBuilder
     private var previewControls: some View {
         @Bindable var model = model
+        VStack(alignment: .leading, spacing: 6) {
         HStack {
             Toggle("Preview on the photo", isOn: $model.showPreview)
                 .toggleStyle(.checkbox)
@@ -558,6 +559,19 @@ struct ColorWheelView: View {
                 .labelsHidden()
                 .frame(width: 110)
             }
+        }
+        if let caveats = model.previewSettings?.modelCaveats, !caveats.isEmpty {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("The preview is less exact here than on the measured chart:")
+                    ForEach(caveats, id: \.self) { Text("• " + $0).foregroundStyle(.secondary) }
+                }
+            }
+            .font(.caption)
+            .fixedSize(horizontal: false, vertical: true)
+            .help("The preview follows a model of PhotoLab measured on a chart (see the README). These parts of this suggestion lie outside what was measured or were only roughly fitted. Check them in PhotoLab.")
+        }
         }
     }
 
