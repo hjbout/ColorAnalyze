@@ -486,6 +486,7 @@ final class AnalysisModel {
                 afterImage = nil
                 intention = ""
                 variants = []
+                showVariantGrid = false
                 viewport.fit()
                 saliency = nil
                 saliencyFailed = false
