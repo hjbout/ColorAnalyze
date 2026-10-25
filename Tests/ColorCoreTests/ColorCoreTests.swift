@@ -2272,3 +2272,49 @@ import Testing
         #expect(try Session.read(from: url).variants == nil)
     }
 }
+
+@Suite struct AccentColorTests {
+    static let water = SRGBColor(r: 0.15, g: 0.3, b: 0.5), boat = SRGBColor(r: 0.85, g: 0.15, b: 0.1)
+    static let speck = SRGBColor(r: 0.1, g: 0.9, b: 0.2)
+
+    /// 100×100 water with a 6×4 boat, and optionally a 3-pixel bright speck.
+    static func scene(speck withSpeck: Bool) -> PixelBuffer {
+        var linear: [SIMD3<Float>] = []
+        for y in 0..<100 {
+            for x in 0..<100 {
+                let isBoat = (60..<66).contains(x) && (70..<74).contains(y)
+                let isSpeck = withSpeck && y == 20 && (10..<13).contains(x)
+                linear.append((isBoat ? boat : isSpeck ? speck : water).linear)
+            }
+        }
+        return PixelBuffer(width: 100, height: 100, linear: linear)
+    }
+
+    @Test func anAccentIsTheStrikingColorTheDominantOnesLeaveOut() throws {
+        let colors = DominantColorAnalyzer.analyze(Self.scene(speck: false), count: 2, accents: 1)
+        #expect(colors.count == 2)
+        let found = colors.first { $0.isAccent }
+        let accent = try #require(found)
+        #expect(!colors[0].isAccent)
+        #expect(ColorMath.distanceSquared(accent.centroid, Self.boat.oklab).squareRoot() < 0.03)
+        #expect((0.58...0.68).contains(accent.location.x) && (0.68...0.76).contains(accent.location.y))
+    }
+
+    @Test func aSpeckOfPixelsIsNoAccent() {
+        #expect(DominantColorAnalyzer.findAccent(in: Self.scene(speck: true), existing: [Self.water.oklab, Self.boat.oklab]) == nil)
+    }
+
+    @Test func withoutAnAccentTheSlotGoesToADominantColor() {
+        let flat = PixelBuffer(width: 50, height: 50, linear: [SIMD3<Float>](repeating: Self.water.linear, count: 2500))
+        let colors = DominantColorAnalyzer.analyze(flat, count: 3, accents: 2)
+        #expect(colors.allSatisfy { !$0.isAccent })
+        #expect(!colors.isEmpty)
+    }
+
+    @Test func noAccentsLeavesTheAnalysisAsItWas() {
+        let plain = DominantColorAnalyzer.analyze(Self.scene(speck: false), count: 3)
+        let withZero = DominantColorAnalyzer.analyze(Self.scene(speck: false), count: 3, accents: 0)
+        #expect(plain.map(\.centroid) == withZero.map(\.centroid))
+        #expect(plain.allSatisfy { !$0.isAccent })
+    }
+}

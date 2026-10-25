@@ -23,6 +23,9 @@ struct Marker: Identifiable, Equatable {
     /// Set by hand: the radius its color is averaged over, as a fraction of the photo's short side. nil = the default.
     var customSampleRadius: Double?
 
+    /// Found by the accent search: a small, striking color rather than a large one.
+    var isAccent = false
+
     var sampleRadius: Double { customSampleRadius ?? AnalysisModel.defaultSampleRadius }
 
     /// Signed hue shift (sRGB degrees) from `hue` (default: the color's own) to the target set by hand, nil without one.
@@ -283,6 +286,14 @@ final class AnalysisModel {
         didSet {
             if colorCount != oldValue { remember(colorCount, as: "colorCount") }
             if colorCount != oldValue, !isRestoring { analyze() }
+        }
+    }
+
+    /// How many of the colors are accents: small, striking colors that the share ranking would pass over. Remembered.
+    var accentCount = AnalysisModel.remembered("accentCount").map { min(3, max(0, $0)) } ?? 0 {
+        didSet {
+            if accentCount != oldValue { remember(accentCount, as: "accentCount") }
+            if accentCount != oldValue, !isRestoring { analyze() }
         }
     }
 
@@ -547,15 +558,20 @@ final class AnalysisModel {
         guard let image else { return }
         isAnalyzing = true
         let count = colorCount
+        let accents = accentCount
         await prepareWeights()
         let pixelWeights = weights
         let found = await Task.detached(priority: .userInitiated) {
-            DominantColorAnalyzer.analyze(image.analysis, count: count, weights: pixelWeights)
+            DominantColorAnalyzer.analyze(image.analysis, count: count, accents: accents, weights: pixelWeights)
         }.value
         guard self.image?.url == image.url else { return }
         // A new analysis replaces hand-placed markers; Undo brings them back. Opening a photo is not undoable.
         if markDirty, !markers.isEmpty { registerMarkerUndo("Re-analyze") }
-        markers = found.map { Marker(location: $0.location, color: sample(at: $0.location)) }
+        markers = found.map {
+            var marker = Marker(location: $0.location, color: sample(at: $0.location))
+            marker.isAccent = $0.isAccent
+            return marker
+        }
         selectedMarkerID = nil
         hoveredMarkerID = nil
         harmonyRotationOverride = nil

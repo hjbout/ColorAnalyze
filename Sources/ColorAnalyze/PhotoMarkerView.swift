@@ -36,7 +36,8 @@ struct PhotoMarkerView: View {
 
                     ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
                         MarkerBadge(number: index + 1, color: model.displayColor(for: marker),
-                                    diameter: zoomed ? 20 : 26, isSelected: marker.id == model.selectedMarkerID)
+                                    diameter: zoomed ? 20 : 26, isSelected: marker.id == model.selectedMarkerID,
+                                    isAccent: marker.isAccent)
                             .position(x: rect.minX + marker.location.x * rect.width,
                                       y: rect.minY + marker.location.y * rect.height)
                             // No .onHover here: with it, marker and divider drags stop working.

@@ -127,7 +127,7 @@ private struct ColorRow: View {
         let channel = DxOMapping.channel(for: color)
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 10) {
-                MarkerBadge(number: number, color: color, diameter: 22)
+                MarkerBadge(number: number, color: color, diameter: 22, isAccent: marker.isAccent)
                 RoundedRectangle(cornerRadius: 6)
                     .fill(color.swiftUIColor)
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.black.opacity(0.2)))
@@ -144,6 +144,13 @@ private struct ColorRow: View {
                         }
                         .buttonStyle(.borderless)
                         .help("Copy hex")
+                        if marker.isAccent {
+                            Text("Accent")
+                                .font(.caption2.weight(.medium))
+                                .padding(.horizontal, 5)
+                                .background(Capsule().fill(Color.yellow.opacity(0.3)))
+                                .help("A small, striking color found by the accent search, not by its share of the photo")
+                        }
                     }
                     Text("RGB \(rgb.r) \(rgb.g) \(rgb.b)")
                     Text(String(format: "HSL %.0f° %.0f%% %.0f%%", hsl.h, hsl.s * 100, hsl.l * 100))

@@ -8,6 +8,8 @@ public struct DominantColor: Sendable {
     public var share: Double
     /// Center of the largest homogeneous patch, normalized with a top-left origin.
     public var location: CGPoint
+    /// Found by the accent search (a small, striking color) and not by share.
+    public var isAccent = false
 }
 
 public enum DominantColorAnalyzer {
@@ -23,9 +25,27 @@ public enum DominantColorAnalyzer {
     /// Finds up to `count` dominant colors, sorted by share (largest first).
     /// `weights` (one per pixel, e.g. 1 + strength × saliency) make the subject count
     /// more: they steer the clusters, the shares and where the markers land.
-    public static func analyze(_ buffer: PixelBuffer, count: Int, weights: [Float]? = nil) -> [DominantColor] {
+    public static func analyze(_ buffer: PixelBuffer, count: Int, accents: Int = 0, weights: [Float]? = nil) -> [DominantColor] {
         let n = buffer.lab.count
         guard n > 0, count > 0 else { return [] }
+        guard accents > 0 else { return dominant(buffer, count: count, weights: weights) }
+
+        // The accents come out of the same number of colors: the dominant ones are found first, then each accent is the
+        // most striking color they leave out. An accent that is not there (a photo without one) is left to a dominant color.
+        var colors = dominant(buffer, count: max(1, count - accents), weights: weights)
+        var found: [DominantColor] = []
+        while found.count < min(accents, count - 1),
+              let accent = findAccent(in: buffer, existing: (colors + found).map(\.centroid), weights: weights) {
+            found.append(accent)
+        }
+        if found.count < accents {
+            colors = dominant(buffer, count: count - found.count, weights: weights)
+        }
+        return colors + found
+    }
+
+    static func dominant(_ buffer: PixelBuffer, count: Int, weights: [Float]?) -> [DominantColor] {
+        let n = buffer.lab.count
 
         // Over-cluster, then merge near-duplicates so a large gradient (sky) does not
         // take several slots at the expense of a small accent color.
@@ -100,6 +120,12 @@ public enum DominantColorAnalyzer {
     /// away from the edges.
     private static func bestLocation(of c: Int, assignments: [Int], weights: [Float]?, centroid: SIMD3<Float>,
                                      buffer: PixelBuffer) -> CGPoint {
+        bestPatch(of: c, assignments: assignments, weights: weights, centroid: centroid, buffer: buffer).location
+    }
+
+    /// `bestLocation`, with the score of that spot: how much of the window around it the color holds (0...1 without weights).
+    private static func bestPatch(of c: Int, assignments: [Int], weights: [Float]?, centroid: SIMD3<Float>,
+                                  buffer: PixelBuffer) -> (location: CGPoint, fill: Double) {
         let w = buffer.width, h = buffer.height
         // Summed-area table with a zero border row/column.
         var sat = [Double](repeating: 0, count: (w + 1) * (h + 1))
@@ -150,7 +176,78 @@ public enum DominantColorAnalyzer {
                 }
             }
         }
-        return CGPoint(x: (Double(best.x) + 0.5) / Double(w), y: (Double(best.y) + 0.5) / Double(h))
+        return (CGPoint(x: (Double(best.x) + 0.5) / Double(w), y: (Double(best.y) + 0.5) / Double(h)), maxScore)
+    }
+}
+
+// MARK: Accents
+
+extension DominantColorAnalyzer {
+    /// OKLab distance from the colors already chosen beyond which a color counts as something else.
+    public static let accentDistance: Float = 0.07
+    /// OKLab chroma below which a color is too grey to be an accent.
+    public static let accentMinimumChroma: Float = 0.06
+    /// Share of the photo (pixels) an accent must cover at least: below it a color is a speck, grain or a glint.
+    public static let accentMinimumShare = 0.0015
+    /// How much of the patch window the color must fill around its best spot: a coherent patch, not scattered pixels.
+    public static let accentMinimumFill = 0.35
+
+    /// The most striking color the `existing` colors leave out: far from all of them, saturated, and a coherent patch of
+    /// at least 0.15 % of the photo. Candidates are clusters of such pixels, scored by chroma² × distance × how well they
+    /// fill their patch: size only has to clear the minimum, so a small vivid patch beats a big, milder one. nil when
+    /// the photo has no such color.
+    public static func findAccent(in buffer: PixelBuffer, existing: [SIMD3<Float>],
+                                  weights: [Float]? = nil) -> DominantColor? {
+        let n = buffer.lab.count
+        guard n > 0, !existing.isEmpty else { return nil }
+
+        var points: [SIMD3<Float>] = []
+        var pointWeights: [Float] = []
+        var pointIndex: [Int] = []
+        var residual = [Float](repeating: 0, count: n)
+        for (i, p) in buffer.lab.enumerated() {
+            let chroma = (p.y * p.y + p.z * p.z).squareRoot()
+            guard chroma > accentMinimumChroma else { continue }
+            let d = ColorMath.distanceSquared(p, existing[KMeans.nearest(p, in: existing)]).squareRoot()
+            guard d > accentDistance else { continue }
+            let weight = chroma * chroma * d * (weights?[i] ?? 1)
+            residual[i] = weight
+            points.append(p)
+            pointWeights.append(weight)
+            pointIndex.append(i)
+        }
+        guard points.count >= max(4, Int(Double(n) * accentMinimumShare)) else { return nil }
+
+        let km = KMeans.cluster(points, weights: pointWeights, k: min(8, points.count))
+        let merged = mergeClose(centroids: km.centroids, mass: km.mass, threshold: mergeThreshold)
+        var assignments = [Int](repeating: -1, count: n)
+        for (k, i) in pointIndex.enumerated() { assignments[i] = merged.label[km.assignments[k]] }
+
+        var counts = [Int: Int]()
+        for a in assignments where a >= 0 { counts[a, default: 0] += 1 }
+
+        var best: (cluster: Int, score: Double, location: CGPoint)?
+        for cluster in merged.ranked.prefix(6) {
+            guard Double(counts[cluster] ?? 0) >= Double(n) * accentMinimumShare else { continue }
+            // Coherence is judged on plain pixels, whatever the weights say.
+            let patch = bestPatch(of: cluster, assignments: assignments, weights: nil,
+                                  centroid: merged.centroids[cluster], buffer: buffer)
+            guard patch.fill >= accentMinimumFill else { continue }
+            // Size only has to clear the minimums: a small vivid patch must beat a big, milder one (a sunset glow).
+            let centroid = merged.centroids[cluster]
+            let chroma = Double((centroid.y * centroid.y + centroid.z * centroid.z).squareRoot())
+            let distance = Double(ColorMath.distanceSquared(centroid, existing[KMeans.nearest(centroid, in: existing)]).squareRoot())
+            let score = chroma * chroma * distance * patch.fill
+            if best == nil || score > best!.score {
+                let location = bestLocation(of: cluster, assignments: assignments, weights: residual,
+                                            centroid: merged.centroids[cluster], buffer: buffer)
+                best = (cluster, score, location)
+            }
+        }
+        guard let best else { return nil }
+        return DominantColor(centroid: merged.centroids[best.cluster],
+                             share: Double(counts[best.cluster] ?? 0) / Double(n),
+                             location: best.location, isAccent: true)
     }
 }
 

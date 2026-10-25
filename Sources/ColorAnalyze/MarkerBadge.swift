@@ -45,6 +45,8 @@ struct MarkerBadge: View {
     let color: SRGBColor
     var diameter: CGFloat = 26
     var isSelected = false
+    /// A small, striking color found by the accent search: marked with a star.
+    var isAccent = false
 
     var body: some View {
         ZStack {
@@ -59,6 +61,15 @@ struct MarkerBadge: View {
                 Circle()
                     .stroke(Color.accentColor, lineWidth: 2)
                     .frame(width: diameter + 8, height: diameter + 8)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if isAccent {
+                Image(systemName: "star.fill")
+                    .font(.system(size: max(8, diameter * 0.4)))
+                    .foregroundStyle(.yellow)
+                    .shadow(color: .black.opacity(0.7), radius: 1)
+                    .offset(x: diameter * 0.2, y: -diameter * 0.2)
             }
         }
         .shadow(color: .black.opacity(0.45), radius: 3, y: 1)

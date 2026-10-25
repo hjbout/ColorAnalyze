@@ -116,6 +116,10 @@ struct ContentView: View {
                              help: "Number of dominant colors to find")
                     .disabled(model.image == nil)
 
+                CountStepper(title: "Accents", value: $model.accentCount, range: 0...3,
+                             help: "How many of the colors are accents: small, striking colors that a ranking by area would pass over")
+                    .disabled(model.image == nil)
+
                 Menu {
                     Picker("Subject Weighting", selection: $model.weighting) {
                         ForEach(Weighting.allCases) { Text($0.title).tag($0) }

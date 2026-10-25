@@ -14,7 +14,7 @@ extension AnalysisModel {
             graded: afterImage?.url.path,
             colorCount: colorCount,
             weighting: weighting == .off ? nil : weighting.rawValue,
-            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex, isProtected: $0.protection, targetHue: $0.targetHue, referenceIndex: $0.referenceIndex, sampleRadius: $0.customSampleRadius) },
+            markers: markers.map { .init(x: $0.location.x, y: $0.location.y, hex: $0.color.hex, isProtected: $0.protection, targetHue: $0.targetHue, referenceIndex: $0.referenceIndex, sampleRadius: $0.customSampleRadius, isAccent: $0.isAccent ? true : nil) },
             harmony: harmonyChoice?.rawValue,
             harmonyRotation: harmonyRotationOverride,
             hueSpace: hueSpace == .rgb ? nil : hueSpace.rawValue,
@@ -22,7 +22,8 @@ extension AnalysisModel {
             splitPosition: afterImage == nil ? nil : splitPosition,
             intention: intention,
             reference: referencePhoto?.url.path,
-            variants: variants.isEmpty ? nil : variants.map(\.session)
+            variants: variants.isEmpty ? nil : variants.map(\.session),
+            accents: accentCount == 0 ? nil : accentCount
         )
     }
 
@@ -56,6 +57,7 @@ extension AnalysisModel {
         defer { suppressRemembering -= 1 }
         isRestoring = true
         colorCount = min(12, max(3, session.colorCount))
+        accentCount = min(3, max(0, session.accents ?? 0))
         weighting = session.weighting.flatMap(Weighting.init(rawValue:)) ?? .off
         isRestoring = false
         await prepareWeights()
@@ -74,6 +76,7 @@ extension AnalysisModel {
             marker.protection = saved.isProtected
             marker.targetHue = saved.targetHue
             marker.referenceIndex = saved.referenceIndex
+            marker.isAccent = saved.isAccent ?? false
             return marker
         }
         selectedMarkerID = nil

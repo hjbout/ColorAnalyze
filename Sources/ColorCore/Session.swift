@@ -21,9 +21,12 @@ public struct Session: Codable, Sendable, Equatable {
         public var referenceIndex: Int?
         /// Radius the color is averaged over, as a fraction of the photo's short side; nil = the default.
         public var sampleRadius: Double?
+        /// True for a color the accent search found; nil (absent) = an ordinary color.
+        public var isAccent: Bool?
 
         public init(x: Double, y: Double, hex: String, isProtected: Bool? = nil, targetHue: Double? = nil,
-                    referenceIndex: Int? = nil, sampleRadius: Double? = nil) {
+                    referenceIndex: Int? = nil, sampleRadius: Double? = nil, isAccent: Bool? = nil) {
+            self.isAccent = isAccent
             self.sampleRadius = sampleRadius
             self.targetHue = targetHue
             self.referenceIndex = referenceIndex
@@ -68,6 +71,8 @@ public struct Session: Codable, Sendable, Equatable {
     /// Absolute path of the graded version, if one was loaded.
     public var graded: String?
     public var colorCount: Int
+    /// How many of the colors are accents (small, striking colors); nil = 0.
+    public var accents: Int?
     /// Subject weighting ("moderate", "strong"); nil = off.
     public var weighting: String?
     public var markers: [Marker]
@@ -89,7 +94,9 @@ public struct Session: Codable, Sendable, Equatable {
     public init(savedAt: Date = Date(), photo: String, graded: String? = nil, colorCount: Int,
                 weighting: String? = nil, markers: [Marker], harmony: String? = nil, harmonyRotation: Double? = nil,
                 hueSpace: String? = nil, compareMode: String? = nil, splitPosition: Double? = nil,
-                intention: String? = nil, reference: String? = nil, variants: [Variant]? = nil) {
+                intention: String? = nil, reference: String? = nil, variants: [Variant]? = nil,
+                accents: Int? = nil) {
+        self.accents = accents
         self.savedAt = savedAt
         self.photo = photo
         self.graded = graded

@@ -200,6 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         var photo: String?, graded: String?, report: String?, reference: String?
         var photoColors: Int?
+        var photoAccents: Int?
         var protectedNumbers: [Int] = []
         var sector: Double?
         var protectSkin: Bool?
@@ -245,6 +246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             case "--colors": photoColors = choice(arg) { Int($0).flatMap { (3...12).contains($0) ? $0 : nil } }
+            case "--accents": photoAccents = choice(arg) { Int($0).flatMap { (0...3).contains($0) ? $0 : nil } }
             case "--weighting": weighting = choice(arg) { Weighting(rawValue: $0.lowercased()) }
             case "--wheel": wheel = choice(arg) { HueSpace(rawValue: $0.lowercased()) }
             case "--export-report": report = value()
@@ -291,6 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if hasExports {
             model.withoutRemembering {
                 model.colorCount = 6
+                model.accentCount = 0
                 model.hueSpace = .rgb
                 model.harmonySector = 10
                 model.protectSkin = true
@@ -307,6 +310,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             exit(2)
         }
         if let photoColors { model.withoutRemembering { model.colorCount = photoColors } }
+        if let photoAccents { model.withoutRemembering { model.accentCount = photoAccents } }
         if let sector { model.withoutRemembering { model.harmonySector = sector } }
         if let protectSkin { model.withoutRemembering { model.protectSkin = protectSkin } }
         let openedPhoto = photo.flatMap { exists($0) ? $0 : nil }

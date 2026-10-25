@@ -176,6 +176,12 @@ Large calm areas (sky, wall, field) dominate a plain pixel count, while the colo
 
 If the subject cannot be detected in a photo, the window says so and that photo's colors count unweighted (in the series window the message lists the photos; in a batch run it goes to stderr). Saliency measures visual attention (contrast, color, position), not "the person" or "the product": a bright background object can pull weight away from the real subject. Check the subject map, and add a marker by hand where the weighting misses.
 
+## Accents: small, striking colors
+
+The analysis ranks colors by surface area, so a red boat or a yellow jacket often misses out. **Accents** in the toolbar (0–3, remembered, next to *Colors*) reserves that many of the colors for accents: with 6 colors and 2 accents you get 4 dominant colors and the 2 most striking colors they leave out. An accent marker has a ★ and an *Accent* label in the list.
+
+A candidate counts when it is saturated (OKLab chroma above 0.06), further than 0.07 from the colors already chosen, covers at least 0.15 % of the photo and forms a coherent patch (at least 35 % of a window of 6 % of the short side is that color), so grain, glints and chromatic aberration do not qualify. Candidates score by chroma² × distance × how well they fill their patch; size only has to clear the minimum, so a small vivid patch beats a big, milder one (a sunset glow). A photo without such a color gives the slot back to a dominant color. With subject weighting on, the subject counts more here too. Saved in the session; `--accents N` on the command line.
+
 ## Suggest a marker for a missing color
 
 The analysis follows surface area, so a small subject or accent — a red boat on blue water, a yellow jacket — often gets no marker. **Suggest Marker** (the wand in the *Markers* group of the toolbar, **Analysis ▸ Suggest Marker for a Missing Color**, ⌥⌘M) adds one on the color that no marker represents yet. Every pixel further than 0.08 (OKLab) from all marker colors counts with its squared distance, so a large patch of a slightly different color and a small patch of a very different one can both win; the pixels are clustered and the marker goes on the middle of the best patch of the heaviest cluster (with subject weighting on, patches on the subject win). Press it again for the next color; when nothing noteworthy is left it says so. It can be undone like any marker change. Existing markers are never moved.
@@ -264,7 +270,7 @@ open build/ColorAnalyze.app
 ./scripts/test.sh               # unit tests (Swift Testing)
 ```
 
-`ColorAnalyze.app/Contents/MacOS/ColorAnalyze /path/to/photo.jpg` opens a photo directly. Runs with an export option (batch) ignore the remembered window settings and start from the defaults (6 colors, RGB wheel, sector ±10°, no weighting, neutral style, amount 1); use `--colors N`, `--protect-skin on|off`, `--harmony-sector exact|narrow|wide|0-30`, `--weighting`, `--wheel`, `--grading-style`, `--grading-amount` to change them. A wrong option value, an unknown option or a missing file stops with exit code 2, a failed export with exit code 1. JPEG, PNG, TIFF, HEIC and camera RAW (via macOS's RAW decoder) are supported.
+`ColorAnalyze.app/Contents/MacOS/ColorAnalyze /path/to/photo.jpg` opens a photo directly. Runs with an export option (batch) ignore the remembered window settings and start from the defaults (6 colors, no accents, RGB wheel, sector ±10°, no weighting, neutral style, amount 1); use `--colors N`, `--accents 0-3`, `--protect-skin on|off`, `--harmony-sector exact|narrow|wide|0-30`, `--weighting`, `--wheel`, `--grading-style`, `--grading-amount` to change them. A wrong option value, an unknown option or a missing file stops with exit code 2, a failed export with exit code 1. JPEG, PNG, TIFF, HEIC and camera RAW (via macOS's RAW decoder) are supported.
 
 ## How the analysis works
 

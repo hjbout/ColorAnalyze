@@ -176,7 +176,7 @@ struct ColorWheelView: View {
                         if showColors {
                         MarkerBadge(number: index + 1, color: marker.color,
                                     diameter: 16 + 30 * sqrt(marker.share),
-                                    isSelected: marker.id == model.selectedMarkerID)
+                                    isSelected: marker.id == model.selectedMarkerID, isAccent: marker.isAccent)
                             .position(WheelGeometry.point(rgbHue: hsb.h, space: model.hueSpace, saturation: hsb.s,
                                                           center: center, radius: radius))
                             // No .onHover here: it makes the rotation handle's drag stop working. Tapping a
