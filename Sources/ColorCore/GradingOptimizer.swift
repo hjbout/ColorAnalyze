@@ -210,6 +210,7 @@ extension ColorGradingSuggestion {
         let finalCost = problem.cost(x)
         let baseline = problem.cost(zero)
         if finalCost > baseline * 0.99 { x = zero }   // not worth a tint
+        let afterAsFound = scale != 1 ? problem.meanErrors(x).after : nil
         // The whole grading applied less or more than found (the amount slider with the Neutral style).
         if scale != 1 {
             for r in 0..<3 {
@@ -249,7 +250,7 @@ extension ColorGradingSuggestion {
         preset.balance = Int(x[9])
         if x[11] > 0 { preset.master = ColorGradingPreset.Wheel(hue: Int(x[10]), saturation: Int(x[11]), luminance: 0) }
         let (before, after) = problem.meanErrors(x)
-        var suggestion = Suggestion(preset: preset, details: details, fit: emphasizing ? nil : Fit(before: before, after: after))
+        var suggestion = Suggestion(preset: preset, details: details, fit: emphasizing ? nil : Fit(before: before, after: after, afterAsFound: afterAsFound))
         suggestion.toneBlacks = Int(x[12])
         suggestion.toneShadows = Int(x[13])
         return suggestion

@@ -129,6 +129,8 @@ public enum ColorGradingSuggestion {
         /// Weighted mean distance, in sRGB hue degrees, of the colors with a hue to their target hues.
         public var before: Double
         public var after: Double
+        /// `after` for the grading as found, when the amount scales it: more than 1 makes the tint stronger, not the fit better.
+        public var afterAsFound: Double? = nil
     }
 
     public struct Suggestion: Sendable, Equatable {

@@ -132,7 +132,8 @@ extension AnalysisModel {
             case .series: seriesMatch(for: marker)?.hueShift
             case .emphasize: nil
             }
-            let shift = (aim == .emphasize ? nil : marker.manualShift() ?? (isProtected(marker) ? nil : target)).map { $0 * setup.amount }
+            // Less than 1 turns part of the way; more than 1 would only turn the color past its target.
+            let shift = (aim == .emphasize ? nil : marker.manualShift() ?? (isProtected(marker) ? nil : target)).map { $0 * min(setup.amount, 1) }
             return HSLSuggestion.Input(number: index + 1, color: marker.color, share: marker.share, hueShift: shift)
         })
     }

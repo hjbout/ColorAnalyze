@@ -484,7 +484,7 @@ struct ColorWheelView: View {
                 }
                 do {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Amount:").help("How strongly the grading is applied: 1 as found, 0 none, 3 about twice the Strong of earlier versions. It scales the whole grading, the style and the hue turns included. The suggested tints, the target markers and the PhotoLab values follow.")
+                        Text("Amount:").help("How strongly the grading is applied: 1 as found, 0 none, 3 about twice the Strong of earlier versions. It scales the tints and the style; the HSL hue turns follow below 1 but never turn a color past its target. At 1 the colors come as close to their targets as the grading can bring them: more makes the tint stronger, at the cost of hue accuracy. The suggested tints, the target markers and the PhotoLab values follow.")
                         HStack(spacing: 8) {
                             ResettableSlider(value: $model.gradingAmount, range: 0...3, resetValue: 1)
                                 .help("Double-click to return to 1")
@@ -514,13 +514,15 @@ struct ColorWheelView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if let grading = model.colorGrading {
                     if let fit = grading.fit {
-                        Text(fit.after < fit.before - 0.5
+                        let asFound = fit.afterAsFound.flatMap { model.gradingAmount > 1 && fit.after > $0 + 0.5 ? $0 : nil }
+                        Text(asFound.map { "Predicted: the colors are \(Int(fit.before.rounded()))° from their target hues now, \(Int(fit.after.rounded()))° after this grading (\(Int($0.rounded()))° at amount 1): the stronger tint costs hue accuracy." }
+                             ?? (fit.after < fit.before - 0.5
                              ? "Predicted: the colors are \(Int(fit.before.rounded()))° from their target hues now, \(Int(fit.after.rounded()))° after this grading."
                              : model.gradingStyle != .neutral && fit.after > fit.before + 0.5
                              ? "Predicted: the colors are \(Int(fit.before.rounded()))° from their target hues now, \(Int(fit.after.rounded()))° with this style: the cast costs hue accuracy."
-                             : "Predicted: no grading brings the colors closer to their target hues.")
+                             : "Predicted: no grading brings the colors closer to their target hues."))
                             .font(.caption)
-                            .foregroundStyle(fit.after < fit.before - 0.5 ? Color.green : Color.secondary)
+                            .foregroundStyle(asFound == nil && fit.after < fit.before - 0.5 ? Color.green : Color.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .help("Weighted mean distance in sRGB hue, from the calibrated model of PhotoLab's Color Grading (see the README).")
                     }

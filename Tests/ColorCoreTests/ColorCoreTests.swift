@@ -1920,6 +1920,14 @@ import Testing
         #expect(problem.meanErrors(p).after > fit.after + 3)
     }
 
+    @Test func moreThanTheAmountAsFoundMakesTheTintStrongerNotTheFitBetter() throws {
+        let asFound = try #require(ColorGradingSuggestion.optimized(from: Self.scene, strength: .moderate).fit)
+        #expect(asFound.afterAsFound == nil)
+        let tripled = try #require(ColorGradingSuggestion.optimized(from: Self.scene, strength: .moderate, scale: 3).fit)
+        #expect(tripled.afterAsFound == asFound.after)
+        #expect(tripled.after > asFound.after)
+    }
+
     /// How far (OKLab) a suggestion moves `color`, as the calibrated model predicts.
     static func movement(of color: SRGBColor, by suggestion: ColorGradingSuggestion.Suggestion) -> Float {
         func tint(_ w: ColorGradingPreset.Wheel) -> GradePreviewSettings.Tint {
