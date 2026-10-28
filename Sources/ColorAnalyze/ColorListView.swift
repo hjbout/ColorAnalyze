@@ -57,7 +57,7 @@ struct ColorListView: View {
         List(selection: $model.selectedMarkerID) {
             Section {
                 ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
-                    ColorRow(number: index + 1, marker: marker, protectionNote: model.protectionNote(for: marker), harmony: fit,
+                    ColorRow(number: index + 1, marker: marker, isProtected: model.isProtected(marker), protectionNote: model.protectionNote(for: marker), harmony: fit,
                              after: model.afterColor(for: marker), series: model.seriesInfo(for: marker), referenceTitle: model.referenceTitle, afterLabel: model.afterLabel)
                         .tag(marker.id)
                         // The whole row is the click target, also its empty parts and the text.
@@ -65,13 +65,13 @@ struct ColorListView: View {
                         .onHover { model.hover(marker.id, inside: $0) }
                         // A click selects the color; a plain click on the selected color deselects it, like a command-click.
                         .simultaneousGesture(TapGesture().onEnded {
+                            // The row's trash button may just have removed the color.
+                            guard model.markers.contains(where: { $0.id == marker.id }) else { return }
                             model.selectedMarkerID = model.selectionAtMouseDown == marker.id ? nil : marker.id
                         })
                         .contextMenu {
                             Button("Copy Hex") { copy(marker.color.hex) }
                             ReferenceMatchMenu(markerID: marker.id)
-                            Button(model.isProtected(marker) ? "Unprotect Color" : "Protect Color (keep its hue)") { model.toggleProtected(marker.id) }
-                            Button("Remove Marker") { model.removeMarker(marker.id) }
                         }
                 }
                 // The notes under the list are rows of their own, so they wrap and are never cut off (a Section footer is).
@@ -108,6 +108,7 @@ private struct ColorRow: View {
     @Environment(AnalysisModel.self) private var model
     let number: Int
     let marker: Marker
+    let isProtected: Bool
     /// Set when the suggestions leave this color's hue alone.
     let protectionNote: String?
     let harmony: HarmonyFit?
@@ -132,6 +133,25 @@ private struct ColorRow: View {
                     .fill(color.swiftUIColor)
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.black.opacity(0.2)))
                     .frame(width: 44, height: 44)
+                    // A protected color is ringed in orange with a lock, so it stands out in the list.
+                    .overlay {
+                        if isProtected {
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(.orange, lineWidth: 2.5)
+                                .padding(-4)
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if isProtected {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 17, height: 17)
+                                .background(Circle().fill(.orange))
+                                .offset(x: 8, y: 8)
+                        }
+                    }
+                    .padding(.horizontal, 4)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(color.hex)
@@ -162,6 +182,17 @@ private struct ColorRow: View {
                         .font(.headline.monospacedDigit())
                     ProgressView(value: marker.share)
                         .frame(width: 56)
+                    HStack(spacing: 4) {
+                        protectButton
+                        Button {
+                            model.removeMarker(marker.id)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Remove marker")
+                    }
+                    .padding(.top, 2)
                 }
             }
 
@@ -231,6 +262,28 @@ private struct ColorRow: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    /// An orange "Protected" label when the color keeps its hue, a faint open lock when it does not.
+    private var protectButton: some View {
+        Button {
+            model.toggleProtected(marker.id)
+        } label: {
+            if isProtected {
+                Label("Protected", systemImage: "lock.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(.orange))
+            } else {
+                Image(systemName: "lock.open")
+                    .foregroundStyle(.secondary)
+                    .opacity(0.6)
+            }
+        }
+        .buttonStyle(.borderless)
+        .help(isProtected ? "Unprotect color" : "Protect color (keep its hue)")
     }
 
     private func afterSummary(before: SRGBColor, after: SRGBColor) -> some View {
