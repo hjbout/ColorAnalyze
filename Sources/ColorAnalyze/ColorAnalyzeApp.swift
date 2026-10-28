@@ -20,6 +20,11 @@ struct ColorAnalyzeApp: App {
                     .keyboardShortcut("o")
                 Button("Open Graded Version…") { delegate.model.presentOpenPanel(graded: true) }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
+                Button("Show Photo in Finder") {
+                    if let url = delegate.model.image?.url { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(delegate.model.image == nil)
                 Divider()
                 Button("Previous Photo in Folder") { delegate.model.stepPhoto(-1) }
                     .keyboardShortcut("[")
