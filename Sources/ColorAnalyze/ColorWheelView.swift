@@ -118,8 +118,10 @@ struct ColorWheelView: View {
     var body: some View {
         @Bindable var model = model
         let fit = model.harmony
-        let showColors = !model.hasAfterColors || markerMode != .targets
-        let showTargets = model.hasAfterColors && markerMode != .colors
+        // While D shows the original photo, the wheel shows only the markers the user placed.
+        let original = model.isShowingOriginal
+        let showColors = original || !model.hasAfterColors || markerMode != .targets
+        let showTargets = !original && model.hasAfterColors && markerMode != .colors
         VStack(spacing: 16) {
             GeometryReader { geo in
                 // Leave room for the rotation handle, which sits 7% outside the rim at any angle.
@@ -145,7 +147,7 @@ struct ColorWheelView: View {
                     }
 
                     if let fit {
-                        HarmonyOverlay(fit: fit, markers: model.markers, center: center, radius: radius, showsShifts: showColors)
+                        HarmonyOverlay(fit: fit, markers: model.markers, center: center, radius: radius, showsShifts: showColors && !original)
                             .allowsHitTesting(false)
                         rotationHandle(fit: fit, center: center, radius: radius)
                     }
