@@ -548,7 +548,7 @@ struct ColorWheelView: View {
                 .disabled(model.afterImage != nil)
                 .help((model.afterImage != nil ? "Close the comparison with the graded version first: it has the divider.\n\n" : "")
                       + (model.showPreview && model.previewSettings?.isIdentity == true ? "The suggestion changes nothing to show.\n\n" : "")
-                      + "Show the photo with the suggested Color Grading and HSL values applied, right of a divider you can drag or below the original (P). An approximation of the tints and hue turns, not PhotoLab's own rendering.")
+                      + "Show the photo with the suggested Color Grading and HSL values applied, right of a divider you can drag, below the original or alone in the whole pane, where D held down shows the original (P). An approximation of the tints and hue turns, not PhotoLab's own rendering.")
             Spacer()
             if model.showPreview {
                 Text("Amount").font(.caption).help("×1 is as suggested; ×2 and ×4 exaggerate the tints (not the hue turns), to see the direction of a small suggestion")

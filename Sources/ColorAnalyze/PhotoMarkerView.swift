@@ -1,3 +1,4 @@
+import AppKit
 import ColorCore
 import SwiftUI
 
@@ -30,7 +31,7 @@ struct PhotoMarkerView: View {
 
                     comparisonTags(visible: visible, previewActive: previewActive, stacked: stacked)
 
-                    if (model.afterImage != nil && model.compareMode == .split) || (previewActive && !stacked) {
+                    if (model.afterImage != nil && model.compareMode == .split) || (previewActive && model.previewLayout == .split) {
                         splitDivider(in: rect, visible: visible)
                     }
 
@@ -82,7 +83,10 @@ struct PhotoMarkerView: View {
                         return moved
                     }
                 ))
-                .onAppear { keepViewportValid(image: image, fit: fit.size, pane: pane) }
+                .onAppear {
+                    HoldOriginalMonitor.shared.start(model)
+                    keepViewportValid(image: image, fit: fit.size, pane: pane)
+                }
                 .onChange(of: pane) { keepViewportValid(image: image, fit: fit.size, pane: pane) }
                 .onChange(of: model.viewport) { keepViewportValid(image: image, fit: fit.size, pane: pane) }
                 .onChange(of: model.previewSettings) { model.refreshPreview() }
@@ -110,11 +114,14 @@ struct PhotoMarkerView: View {
                     .resizable()
                     .interpolation(interpolation)
                     .clipShape(RightPart(fraction: model.compareMode == .split ? model.splitPosition : 0))
-            } else if model.afterImage == nil, model.showPreview, model.previewLayout == .split, let preview = model.previewImage {
-                Image(decorative: preview, scale: 1)
-                    .resizable()
-                    .interpolation(interpolation)
-                    .clipShape(RightPart(fraction: model.splitPosition))
+            } else if model.afterImage == nil, model.showPreview, model.previewLayout != .stacked, let preview = model.previewImage {
+                // Full: the preview alone, until D is held.
+                if model.previewLayout == .split || !model.isShowingOriginal {
+                    Image(decorative: preview, scale: 1)
+                        .resizable()
+                        .interpolation(interpolation)
+                        .clipShape(RightPart(fraction: model.previewLayout == .split ? model.splitPosition : 0))
+                }
             }
             if let saliency = model.saliencyOverlay {
                 Image(decorative: saliency, scale: 1)
@@ -144,17 +151,21 @@ struct PhotoMarkerView: View {
             Color.clear
                 .frame(width: visible.width, height: visible.height)
                 .overlay(alignment: .topLeading) {
-                    tag(previewActive ? "Original" : model.compareMode == .after ? "After" : "Before")
+                    if previewActive && model.previewLayout == .full {
+                        tag(model.isShowingOriginal ? "Original" : "Preview (hold D for the original)")
+                    } else {
+                        tag(previewActive ? "Original" : model.compareMode == .after ? "After" : "Before")
+                    }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if previewActive { if !stacked { tag("Preview") } } else if model.compareMode == .split { tag("After") }
+                    if previewActive { if model.previewLayout == .split { tag("Preview") } } else if model.compareMode == .split { tag("After") }
                 }
                 .position(x: visible.midX, y: visible.midY)
                 .allowsHitTesting(false)
         }
     }
 
-    /// Switch between the preview right of a divider and below the original: two icons in a small capsule in the lower left corner of the photo pane.
+    /// Switch between the preview right of a divider, below the original and alone in the pane: three icons in a small capsule in the lower left corner of the photo pane.
     private var layoutSwitch: some View {
         HStack(spacing: 2) {
             ForEach(AnalysisModel.PreviewLayout.allCases) { layout in
@@ -162,7 +173,7 @@ struct PhotoMarkerView: View {
                 Button {
                     model.previewLayout = layout
                 } label: {
-                    Image(systemName: layout == .split ? "rectangle.split.2x1" : "rectangle.split.1x2")
+                    Image(systemName: layout.symbol)
                         .font(.system(size: 12, weight: .semibold))
                         .frame(width: 30, height: 22)
                         .foregroundStyle(selected ? Color.white : Color.primary)
@@ -170,8 +181,8 @@ struct PhotoMarkerView: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .help(layout == .split ? "Preview right of a divider you can drag" : "Preview in a second photo below the original")
-                .accessibilityLabel(layout == .split ? "Preview next to the original, with a divider" : "Preview below the original")
+                .help(layout.helpText)
+                .accessibilityLabel(layout.helpText)
             }
         }
         .padding(3)
@@ -460,5 +471,59 @@ private struct RightPart: Shape {
 
     func path(in rect: CGRect) -> Path {
         Path(CGRect(x: rect.width * fraction, y: 0, width: rect.width * (1 - fraction), height: rect.height))
+    }
+}
+
+extension AnalysisModel.PreviewLayout {
+    var symbol: String {
+        switch self {
+        case .split: "rectangle.split.2x1"
+        case .stacked: "rectangle.split.1x2"
+        case .full: "rectangle"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .split: "Preview right of a divider you can drag"
+        case .stacked: "Preview in a second photo below the original"
+        case .full: "Preview in the whole pane; hold D to see the original"
+        }
+    }
+}
+
+/// Holding D shows the original in the full preview layout, as in PhotoLab. A monitor takes the key, as it must see the release too.
+@MainActor private final class HoldOriginalMonitor {
+    static let shared = HoldOriginalMonitor()
+    private var monitors: [Any] = []
+
+    func start(_ model: AnalysisModel) {
+        guard monitors.isEmpty else { return }
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp], handler: { event in
+            let used = MainActor.assumeIsolated { Self.handle(event, model) }
+            return used ? nil : event
+        }) { monitors.append(monitor) }
+        // A release that happens elsewhere must not leave the original showing.
+        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { model.holdsOriginalKey = false }
+        }
+        NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { model.holdsOriginalKey = false }
+        }
+    }
+
+    private static func handle(_ event: NSEvent, _ model: AnalysisModel) -> Bool {
+        guard event.keyCode == 2 else { return false }   // D
+        if event.type == .keyUp {
+            let wasHeld = model.holdsOriginalKey
+            model.holdsOriginalKey = false
+            return wasHeld
+        }
+        guard event.window != nil, event.window === NSApp.keyWindow,
+              !(event.window?.firstResponder is NSText),
+              event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+              model.showPreview, model.previewLayout == .full else { return false }
+        model.holdsOriginalKey = true
+        return true
     }
 }

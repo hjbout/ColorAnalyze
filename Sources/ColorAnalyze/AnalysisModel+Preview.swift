@@ -7,14 +7,19 @@ import UniformTypeIdentifiers
 extension AnalysisModel {
     // MARK: Preview of the suggestion
 
-    /// How the preview is shown next to the original: right of a divider you can drag, or in a second photo below it.
+    /// How the preview is shown: right of a divider you can drag, in a second photo below the original, or alone in the
+    /// whole pane with the original while D is held (like PhotoLab).
     enum PreviewLayout: String, CaseIterable, Identifiable {
         case split = "Divider"
         case stacked = "Below"
+        case full = "Full"
         var id: String { rawValue }
     }
     /// True when the preview is drawn as a second photo below the original.
     var isStackedPreview: Bool { showPreview && previewImage != nil && afterImage == nil && previewLayout == .stacked }
+
+    /// True while the preview fills the pane and D is held down to show the original.
+    var isShowingOriginal: Bool { holdsOriginalKey && showPreview && previewImage != nil && afterImage == nil && previewLayout == .full }
 
     /// The suggestion as settings of the calibrated model, as suggested (amount 1), with the plan to apply them.
     func prediction() -> (settings: GradePreviewSettings, plan: GradePreview.Plan)? {

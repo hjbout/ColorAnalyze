@@ -221,6 +221,9 @@ final class AnalysisModel {
         didSet { if previewAmount != oldValue { remember(previewAmount, as: "previewAmount"); refreshPreview() } }
     }
 
+    /// True while the D key is held; shows the original in the full preview layout.
+    var holdsOriginalKey = false
+
     var previewImage: CGImage?
 
     /// The render loop of the preview, while it runs.

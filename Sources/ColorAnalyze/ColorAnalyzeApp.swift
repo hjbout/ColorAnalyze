@@ -119,9 +119,11 @@ struct ColorAnalyzeApp: App {
                     .keyboardShortcut("2", modifiers: .option)
                 Button("Preview Amount ×4") { delegate.model.previewAmount = 4 }
                     .keyboardShortcut("4", modifiers: .option)
-                Toggle("Show Preview Below the Original", isOn: Binding(
-                    get: { delegate.model.previewLayout == .stacked },
-                    set: { delegate.model.previewLayout = $0 ? .stacked : .split }))
+                Picker("Preview Layout", selection: Bindable(delegate.model).previewLayout) {
+                    Text("Divider").tag(AnalysisModel.PreviewLayout.split)
+                    Text("Below the Original").tag(AnalysisModel.PreviewLayout.stacked)
+                    Text("Full Pane (hold D for the Original)").tag(AnalysisModel.PreviewLayout.full)
+                }
                 Divider()
                 Button("Close Comparison") { delegate.model.clearGraded() }
                     .disabled(delegate.model.afterImage == nil)
