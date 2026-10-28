@@ -415,11 +415,15 @@ final class AnalysisModel {
     /// Same region as a share of the subject-weighted photo; nil when weighting is off.
     var regionWeightedShare: Double?
 
+    var ignoreHoverUntil = Date.distantPast
+
     var highlightedMarkerID: Marker.ID? { hoveredMarkerID ?? selectedMarkerID }
 
     /// Pointer entered or left a marker or list row.
     func hover(_ id: Marker.ID, inside: Bool) {
         if inside {
+            // Rows rebuilt under a resting pointer after opening a photo report a hover that is not the user's.
+            guard Date() >= ignoreHoverUntil else { return }
             hoveredMarkerID = id
         } else if hoveredMarkerID == id {
             hoveredMarkerID = nil
@@ -577,6 +581,7 @@ final class AnalysisModel {
         }
         selectedMarkerID = nil
         hoveredMarkerID = nil
+        ignoreHoverUntil = Date().addingTimeInterval(0.6)
         harmonyRotationOverride = nil
         updateShares()
         isAnalyzing = false

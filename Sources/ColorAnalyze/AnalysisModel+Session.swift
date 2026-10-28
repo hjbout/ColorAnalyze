@@ -81,6 +81,7 @@ extension AnalysisModel {
         }
         selectedMarkerID = nil
         hoveredMarkerID = nil
+        ignoreHoverUntil = Date().addingTimeInterval(0.6)
         updateShares()
         isAnalyzing = false
         refreshPreview()
