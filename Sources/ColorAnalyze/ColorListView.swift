@@ -133,44 +133,10 @@ private struct ColorRow: View {
                     .fill(color.swiftUIColor)
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.black.opacity(0.2)))
                     .frame(width: 44, height: 44)
-                    // A protected color is ringed in orange with a lock, so it stands out in the list.
-                    .overlay {
-                        if isProtected {
-                            RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(.orange, lineWidth: 2.5)
-                                .padding(-4)
-                        }
-                    }
-                    .overlay(alignment: .bottomTrailing) {
-                        if isProtected {
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 17, height: 17)
-                                .background(Circle().fill(.orange))
-                                .offset(x: 8, y: 8)
-                        }
-                    }
-                    .padding(.horizontal, 4)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
-                        Text(color.hex)
-                            .font(.system(.body, design: .monospaced).weight(.semibold))
-                            .textSelection(.enabled)
-                        Button {
-                            copy(color.hex)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Copy hex")
-                        if marker.isAccent {
-                            Text("Accent")
-                                .font(.caption2.weight(.medium))
-                                .padding(.horizontal, 5)
-                                .background(Capsule().fill(Color.yellow.opacity(0.3)))
-                                .help("A small, striking color found by the accent search, not by its share of the photo")
-                        }
+                        hexAndCopy(color)
+                        if marker.isAccent { accentTag }
                     }
                     Text("RGB \(rgb.r) \(rgb.g) \(rgb.b)")
                     Text(String(format: "HSL %.0f° %.0f%% %.0f%%", hsl.h, hsl.s * 100, hsl.l * 100))
@@ -182,32 +148,23 @@ private struct ColorRow: View {
                         .font(.headline.monospacedDigit())
                     ProgressView(value: marker.share)
                         .frame(width: 56)
-                    HStack(spacing: 4) {
-                        protectButton
-                        Button {
-                            model.removeMarker(marker.id)
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Remove marker")
-                    }
-                    .padding(.top, 2)
                 }
             }
 
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 2) {
                 GridRow {
-                    Text("DxO HSL").foregroundStyle(.secondary)
+                    gridLabel("DxO HSL")
+                    // Leaves room for the buttons floating at the right.
                     Text(channel == .neutral ? "Neutral — use White Balance / Color Grading" : channel.displayName)
+                        .padding(.trailing, 100)
                 }
                 GridRow {
-                    Text("Grading").foregroundStyle(.secondary)
+                    gridLabel("Grading")
                     Text(String(format: "%@ (L* %.0f)", DxOMapping.tonalRange(for: color).displayName, color.lightness))
                 }
                 if let series {
                     GridRow {
-                        Text(referenceTitle).foregroundStyle(.secondary)
+                        gridLabel(referenceTitle)
                         let note = seriesRowNote(series, noun: referenceTitle.lowercased())
                         Text(note.text).foregroundStyle(note.color)
                     }
@@ -215,7 +172,7 @@ private struct ColorRow: View {
                 if color.isOutsideSRGB {
                     let p3 = color.displayP3RGB255
                     GridRow {
-                        Text("Gamut").foregroundStyle(.secondary)
+                        gridLabel("Gamut")
                         Text("Outside sRGB · Display P3 \(p3.r) \(p3.g) \(p3.b)")
                             .foregroundStyle(.orange)
                             .help("The photo's color is more saturated than sRGB can show: the hex and RGB above are clipped to sRGB, the Display P3 values are what the photo has.")
@@ -223,25 +180,39 @@ private struct ColorRow: View {
                 }
                 if let offset = SkinTone.offset(of: color) {
                     GridRow {
-                        Text("Skin tone").foregroundStyle(.secondary)
+                        gridLabel("Skin tone")
                         Text("In range · \(SkinTone.describe(offset: offset))")
                     }
                 }
                 if let protectionNote {
                     GridRow {
-                        Text("Protected").foregroundStyle(.secondary)
+                        gridLabel("Protected")
                         Text(protectionNote)
                             .foregroundStyle(.orange)
                     }
                 } else if let shift = marker.targetShift(harmony: harmony), channel != .neutral {
                     GridRow {
-                        Text("Harmony").foregroundStyle(.secondary)
+                        gridLabel("Harmony")
                         Text(shiftDescription(hue: color.hsb.h, shift: shift, channel: channel))
                             .foregroundStyle(abs(shift) < 3 ? .green : .primary)
                     }
                 }
             }
             .font(.caption)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // The buttons float at the top right of the details, so the lines below them can run the full width.
+            .overlay(alignment: .topTrailing) {
+                HStack(spacing: 6) {
+                    protectButton
+                    Button {
+                        model.removeMarker(marker.id)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove marker")
+                }
+            }
 
             if model.selectedMarkerID == marker.id {
                 HStack(spacing: 8) {
@@ -264,10 +235,48 @@ private struct ColorRow: View {
         .padding(.vertical, 6)
     }
 
+    private func hexAndCopy(_ color: SRGBColor) -> some View {
+        HStack(spacing: 4) {
+            Text(color.hex)
+                .font(.system(.body, design: .monospaced).weight(.semibold))
+                .textSelection(.enabled)
+                .lineLimit(1)
+                .fixedSize()
+            Button {
+                copy(color.hex)
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .help("Copy hex")
+        }
+    }
+
+    private var accentTag: some View {
+        Text("Accent")
+            .font(.caption2.weight(.medium))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 5)
+            .background(Capsule().fill(Color.yellow.opacity(0.3)))
+            .help("A small, striking color found by the accent search, not by its share of the photo")
+    }
+
     /// An orange "Protected" label when the color keeps its hue, a faint open lock when it does not.
+    /// A label of the details grid, as wide as the widest of them ("Protected"), so the texts beside them stay put.
+    private func gridLabel(_ text: String) -> some View {
+        ZStack(alignment: .leading) {
+            Text("Protected").hidden()
+            Text(text).foregroundStyle(.secondary)
+        }
+    }
+
     private var protectButton: some View {
         Button {
+            // The click must not also select the row: the row's own tap may arrive after this action, so the selection is put back afterwards.
+            let selected = model.selectedMarkerID
             model.toggleProtected(marker.id)
+            DispatchQueue.main.async { model.selectedMarkerID = selected }
         } label: {
             if isProtected {
                 Label("Protected", systemImage: "lock.fill")
