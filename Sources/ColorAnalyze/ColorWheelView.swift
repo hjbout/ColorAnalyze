@@ -538,32 +538,10 @@ struct ColorWheelView: View {
         }
     }
 
-    /// A preview of the suggested tints and hue turns on the photo itself.
+    /// Where the preview is less exact than on the measured chart; its switches sit under the photo (VariantStrip).
     @ViewBuilder
     private var previewControls: some View {
-        @Bindable var model = model
         VStack(alignment: .leading, spacing: 6) {
-        HStack {
-            Toggle("Preview on the photo", isOn: $model.showPreview)
-                .toggleStyle(.checkbox)
-                .controlSize(.small)
-                .disabled(model.afterImage != nil)
-                .help((model.afterImage != nil ? "Close the comparison with the graded version first: it has the divider.\n\n" : "")
-                      + (model.showPreview && model.previewSettings?.isIdentity == true ? "The suggestion changes nothing to show.\n\n" : "")
-                      + "Show the photo with the suggested Color Grading and HSL values applied, right of a divider you can drag, below the original or alone in the whole pane, where D held down shows the original (P). An approximation of the tints and hue turns, not PhotoLab's own rendering.")
-            Spacer()
-            if model.showPreview {
-                Text("Amount").font(.caption).help("×1 is as suggested; ×2 and ×4 exaggerate the tints (not the hue turns), to see the direction of a small suggestion")
-                Picker("Amount", selection: $model.previewAmount) {
-                    Text("×1").tag(1.0)
-                    Text("×2").tag(2.0)
-                    Text("×4").tag(4.0)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 110)
-            }
-        }
         if let caveats = model.previewSettings?.modelCaveats, !caveats.isEmpty {
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)

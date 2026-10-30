@@ -10,6 +10,8 @@ struct VariantStrip: View {
         @Bindable var model = model
         let active = model.activeVariantID
         HStack(spacing: 10) {
+            previewSwitches
+            Divider().frame(height: 36)
             Text("Variants").font(.caption.weight(.medium))
             Button {
                 model.stepVariant(-1)
@@ -33,6 +35,8 @@ struct VariantStrip: View {
                         }
                     }
                     .padding(.vertical, 3)
+                    // Same height as with a chip (thumbnail 44 + 2×4 padding + 2×3), so the bar doesn't shrink when empty.
+                    .frame(minHeight: 58)
                 }
                 // Scrolls sideways with the trackpad, or shift + wheel; the arrows beside it step through the variants.
                 .onChange(of: active) { _, id in
@@ -47,26 +51,65 @@ struct VariantStrip: View {
             .buttonStyle(.borderless)
             .disabled(model.variants.count < 2)
             .help("Next variant (⌥⌘])")
-            Toggle(isOn: $model.showVariantGrid) {
-                Label("Compare", systemImage: "square.grid.2x2")
+            VStack(spacing: 4) {
+                Button {
+                    model.pinCurrentVariant()
+                } label: {
+                    Label("Pin Current", systemImage: "pin")
+                        .frame(maxWidth: .infinity)
+                }
+                .controlSize(.small)
+                .disabled(model.colorGrading == nil)
+                .help("Keep the current style, amount, aim and harmony as a variant (Compare ▸ Pin Current as Variant)")
+                Toggle(isOn: $model.showVariantGrid) {
+                    Label("Compare", systemImage: "square.grid.2x2")
+                        .frame(maxWidth: .infinity)
+                }
+                .toggleStyle(.button)
+                .controlSize(.small)
+                .disabled(model.variants.isEmpty)
+                .help("Show the variants side by side with the original (Compare ▸ Compare All Variants)")
             }
-            .toggleStyle(.button)
-            .controlSize(.small)
-            .disabled(model.variants.isEmpty)
-            .help("Show the variants side by side with the original (Compare ▸ Compare All Variants)")
-            Button {
-                model.pinCurrentVariant()
-            } label: {
-                Label("Pin Current", systemImage: "pin")
-            }
-            .controlSize(.small)
-            .disabled(model.colorGrading == nil)
-            .help("Keep the current style, amount, aim and harmony as a variant (Compare ▸ Pin Current as Variant)")
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .background(.bar)
         .task(id: model.variantPreviewKey) { await model.refreshVariantPreviews() }
+    }
+
+    /// The preview on the photo and its exaggeration, always at hand under the photo.
+    @ViewBuilder
+    private var previewSwitches: some View {
+        @Bindable var model = model
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Toggle("Preview", isOn: $model.showPreview)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                    .disabled(model.afterImage != nil || model.colorGrading == nil)
+                    .help((model.afterImage != nil ? "Close the comparison with the graded version first: it has the divider.\n\n" : "")
+                          + (model.showPreview && model.previewSettings?.isIdentity == true ? "The suggestion changes nothing to show.\n\n" : "")
+                          + "Show the photo with the suggested Color Grading and HSL values applied, right of a divider you can drag, below the original or alone in the whole pane, where D held down shows the original (P). An approximation of the tints and hue turns, not PhotoLab's own rendering.")
+                if let caveats = model.previewSettings?.modelCaveats, !caveats.isEmpty {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .help("The preview is less exact here than on the measured chart:\n" + caveats.map { "• " + $0 }.joined(separator: "\n"))
+                }
+            }
+            Picker("Preview amount", selection: $model.previewAmount) {
+                Text("×1").tag(1.0)
+                Text("×2").tag(2.0)
+                Text("×4").tag(4.0)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(width: 110)
+            .disabled(!model.showPreview)
+            .help("Preview amount: ×1 is as suggested; ×2 and ×4 exaggerate the tints (not the hue turns), to see the direction of a small suggestion")
+        }
+        .fixedSize()
     }
 
     private func chip(_ variant: GradeVariant, number: Int, isActive: Bool) -> some View {
