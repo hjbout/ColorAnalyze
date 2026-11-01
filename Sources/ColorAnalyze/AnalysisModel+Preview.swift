@@ -18,8 +18,8 @@ extension AnalysisModel {
     /// True when the preview is drawn as a second photo below the original.
     var isStackedPreview: Bool { showPreview && previewImage != nil && afterImage == nil && previewLayout == .stacked }
 
-    /// True while the preview fills the pane and D is held down to show the original.
-    var isShowingOriginal: Bool { holdsOriginalKey && showPreview && previewImage != nil && afterImage == nil && previewLayout == .full }
+    /// True while the preview fills the pane and D or the mouse button is held down to show the original.
+    var isShowingOriginal: Bool { (holdsOriginalKey || holdsOriginalMouse) && showPreview && previewImage != nil && afterImage == nil && previewLayout == .full }
 
     /// The suggestion as settings of the calibrated model, as suggested (amount 1), with the plan to apply them.
     func prediction() -> (settings: GradePreviewSettings, plan: GradePreview.Plan)? {

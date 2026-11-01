@@ -223,6 +223,7 @@ final class AnalysisModel {
 
     /// True while the D key is held; shows the original in the full preview layout.
     var holdsOriginalKey = false
+    var holdsOriginalMouse = false
 
     var previewImage: CGImage?
 

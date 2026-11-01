@@ -16,6 +16,8 @@ struct PaneEventCatcher: NSViewRepresentable {
     var onMagnify: (CGFloat, CGPoint) -> Bool
     /// An arrow key (dx, dy in steps; 10 with ⇧, y grows downward) while no text is being edited.
     var onArrow: (Int, Int) -> Bool
+    /// The left mouse button goes down (true) or up (false) over the pane. The event always continues to the views below.
+    var onPress: ((Bool) -> Void)?
 
     func makeNSView(context: Context) -> CatcherView { CatcherView() }
 
@@ -23,20 +25,24 @@ struct PaneEventCatcher: NSViewRepresentable {
         view.onScroll = onScroll
         view.onMagnify = onMagnify
         view.onArrow = onArrow
+        view.onPress = onPress
     }
 
     final class CatcherView: NSView {
         var onScroll: ((Scroll, CGPoint) -> Bool)?
         var onMagnify: ((CGFloat, CGPoint) -> Bool)?
         var onArrow: ((Int, Int) -> Bool)?
+        var onPress: ((Bool) -> Void)?
         private var monitor: Any?
+        private var pressMonitor: Any?
+        private var pressing = false
 
         /// Never takes mouse events itself.
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if window == nil { removeMonitor() } else { installMonitor() }
+            if window == nil { removeMonitor() } else { installMonitor(); installPressMonitor() }
         }
 
         private func installMonitor() {
@@ -46,6 +52,25 @@ struct PaneEventCatcher: NSViewRepresentable {
                 let used = MainActor.assumeIsolated { self?.handle(event) ?? false }
                 return used ? nil : event
             }
+        }
+
+        private func installPressMonitor() {
+            guard pressMonitor == nil else { return }
+            pressMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] event in
+                MainActor.assumeIsolated { self?.handlePress(event) }
+                return event
+            }
+        }
+
+        private func handlePress(_ event: NSEvent) {
+            if event.type == .leftMouseUp {
+                if pressing { pressing = false; onPress?(false) }
+                return
+            }
+            guard event.window != nil, event.window === window,
+                  bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+            pressing = true
+            onPress?(true)
         }
 
         /// True when the event was over this view and one of the handlers used it.
@@ -84,6 +109,9 @@ struct PaneEventCatcher: NSViewRepresentable {
         private func removeMonitor() {
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
+            if let pressMonitor { NSEvent.removeMonitor(pressMonitor) }
+            pressMonitor = nil
+            if pressing { pressing = false; onPress?(false) }
         }
     }
 }

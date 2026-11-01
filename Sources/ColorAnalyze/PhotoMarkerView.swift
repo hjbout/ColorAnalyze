@@ -81,6 +81,10 @@ struct PhotoMarkerView: View {
                         let moved = model.nudgeSelectedMarker(dx: dx, dy: dy)
                         if moved { revealSelectedMarker(fit: fit.size, pane: pane) }
                         return moved
+                    },
+                    onPress: { down in
+                        // Mouse down shows the original too, but only in the full layout.
+                        model.holdsOriginalMouse = down && model.showPreview && model.previewLayout == .full
                     }
                 ))
                 .onAppear {
@@ -505,10 +509,10 @@ extension AnalysisModel.PreviewLayout {
         }) { monitors.append(monitor) }
         // A release that happens elsewhere must not leave the original showing.
         NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { model.holdsOriginalKey = false }
+            MainActor.assumeIsolated { model.holdsOriginalKey = false; model.holdsOriginalMouse = false }
         }
         NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { model.holdsOriginalKey = false }
+            MainActor.assumeIsolated { model.holdsOriginalKey = false; model.holdsOriginalMouse = false }
         }
     }
 
