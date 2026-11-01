@@ -452,6 +452,18 @@ struct PhotoMarkerView: View {
                 .font(.title3)
                 .foregroundStyle(.secondary)
             Button("Open Photo…") { model.presentOpenPanel() }
+            if !model.recentPhotos.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Recents").font(.caption).foregroundStyle(.secondary)
+                    ForEach(model.recentPhotos, id: \.path) { url in
+                        Button(url.lastPathComponent) { model.open(url) }
+                            .buttonStyle(.link)
+                            .lineLimit(1)
+                            .help(url.path)
+                    }
+                }
+                .padding(.top, 8)
+            }
         }
     }
 

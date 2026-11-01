@@ -478,6 +478,14 @@ final class AnalysisModel {
         }
     }
 
+    /// The last photos opened, newest first, for File ▸ Recents.
+    var recentPhotos: [URL] = (UserDefaults.standard.stringArray(forKey: "recentPhotos") ?? []).map { URL(fileURLWithPath: $0) }
+
+    private func noteRecent(_ url: URL) {
+        recentPhotos = Array(([url] + recentPhotos.filter { $0.path != url.path }).prefix(5))
+        UserDefaults.standard.set(recentPhotos.map(\.path), forKey: "recentPhotos")
+    }
+
     /// Opens a photo and restores its saved session if there is one, otherwise analyzes it.
     /// `graded` takes precedence over the graded version stored in a session.
     /// The returned task finishes when loading, analysis and restore are done.
@@ -490,6 +498,7 @@ final class AnalysisModel {
                     try ImageLoader.load(url: url)
                 }.value
                 image = loaded
+                noteRecent(url)
                 undoManager?.removeAllActions(withTarget: self)
                 afterImage = nil
                 intention = ""
