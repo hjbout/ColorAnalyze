@@ -340,8 +340,6 @@ struct ColorWheelView: View {
     private func harmonyTab(fit: HarmonyFit?) -> some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 22) {
-            IntentionField(title: "Intention", placeholder: "What should this photo feel like?",
-                           text: $model.intention)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Text("Wheel").font(.subheadline).help("RGB is the ordinary sRGB hue circle. RYB is the artist's red–yellow–blue wheel, where the classic complements are red–green, orange–blue and yellow–violet. DxO is PhotoLab's own hue axis: the angles are the Hue numbers of its Color Grading and HSL wheels. OKLCH is a perceptual wheel: equal angles look like equal color steps.\n\nOn the DxO, RYB and OKLCH wheels the harmonies are computed in that wheel's terms, but hue shifts and target hues in the list stay in sRGB degrees.")
@@ -454,6 +452,8 @@ struct ColorWheelView: View {
     private var gradingTab: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 22) {
+            IntentionField(title: "Intention", placeholder: "What should this photo feel like?",
+                           text: $model.intention)
             whiteBalanceNote()
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
