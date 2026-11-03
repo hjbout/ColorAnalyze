@@ -350,6 +350,13 @@ final class AnalysisModel {
     var showSkinTone = UserDefaults.standard.object(forKey: "showSkinToneLine") as? Bool ?? true {
         didSet { UserDefaults.standard.set(showSkinTone, forKey: "showSkinToneLine") }
     }
+    /// Draws every pixel of the photo on the wheel as a density cloud under the markers. Remembered between launches.
+    var showPixelScope = UserDefaults.standard.object(forKey: "showPixelScope") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showPixelScope, forKey: "showPixelScope") }
+    }
+    /// The pixel scope as last rendered, and what it was rendered from.
+    var pixelScopeImage: CGImage?
+    @ObservationIgnored var pixelScopeKey: Int?
     /// Darkens everything but the detected subject, to show what the weighting is based on.
     var showSaliency = false {
         didSet { if showSaliency != oldValue { refreshSaliencyOverlay() } }

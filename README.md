@@ -61,6 +61,14 @@ Instead of a series, a single photo can be the reference: **Compare ▸ Open Ref
 - The reference stays when another photo is opened, so one reference can serve a whole batch. It is saved in the session (⌘S) as a path: opening the photo again loads the same reference, from the saved path or else from the photo's folder (a missing file is mentioned in the message and the current reference stays). It uses the *Colors* setting of the moment it was opened, without subject weighting.
 - Command line: `ColorAnalyze photo.jpg --reference look.jpg [--grading-target reference] --export-report report.png --export-dxo-preset grading.preset` (`reference` is the same target as `series`).
 
+## Pixel scope
+
+The markers summarize the photo in a few colors; the **pixel scope** shows all of it. Every pixel is drawn on the wheel as a cloud, like a vectorscope: at its hue and HSB saturation, on the wheel that is chosen (RGB, RYB, DxO, …), so it lines up with the markers, the harmony sectors and the skin tone line. The wheel is darkened and the cloud lights up in the wheel's own colors, turning white where much of the photo sits. Brightness is on a log scale, so a small red boat next to a big blue sky still shows as its own patch.
+
+Use it to see what the markers leave out: how far a color family spreads, whether colors fall inside the harmony sectors, and how much **separation** there is (a cloud that stays in one quadrant has little; colorists check that a graded image spans at least two). With a graded version loaded, or with *Preview on the photo* on, it shows the photo after grading, the same way the ghost markers do (*Colors* in the marker switch shows the original again, and so does holding `D`). The prediction is at amount ×1, like the predicted colors.
+
+Toggle with **Pixel scope** in the *Harmony* tab, **Analysis ▸ Show Pixel Scope** or `V`; the choice is remembered. Built from every other pixel of the 1024 px sampling copy (about 175,000 pixels) and computed in the background. Nearly black pixels fade out below HSB brightness 0.15, because their saturation is noise, and cells with less than about two pixels stay empty, so stray pixels do not speckle the wheel. Like the markers it uses HSB saturation, not chroma: a dark saturated color sits as far out as a bright one. It is not in the PNG report.
+
 ## Skin tone line
 
 A reference for skin on the wheel, like the skin tone line of a vectorscope: a line at sRGB hue 25° inside a faint wedge for hues 13°–37° (orange-red to orange-yellow, where skin of every complexion sits; complexions differ mostly in saturation and brightness). It follows the active wheel (RGB or RYB) and can be switched off with **Skin Tone Line** in the ⚙ menu of the *Harmony* tab or **Analysis ▸ Show Skin Tone Line**; the choice is remembered between launches.
@@ -139,7 +147,7 @@ Some colors are chosen on purpose and should not be pulled toward the harmony: t
 
 ## Remembered settings
 
-These choices are remembered between launches and are active when the app starts: the **number of colors**, the **color wheel** (RGB, RYB, DxO, OKLCH, CIELAB, Munsell, Itten), **subject weighting**, the **skin tone line**, the **Color Grading amount** and the **preview** (on or off, and ×1 / ×2 / ×4). Two things take precedence for one run and do not change what is remembered: the saved session of a photo (the number of colors, weighting and wheel it was saved with, saved with ⌘S) and options given on the command line (`--wheel`, `--weighting`, `--grading-amount`). Remembered values are in the app's preferences (`defaults read local.coloranalyze`); `defaults delete local.coloranalyze` returns everything to the defaults.
+These choices are remembered between launches and are active when the app starts: the **number of colors**, the **color wheel** (RGB, RYB, DxO, OKLCH, CIELAB, Munsell, Itten), **subject weighting**, the **skin tone line**, the **pixel scope**, the **Color Grading amount** and the **preview** (on or off, and ×1 / ×2 / ×4). Two things take precedence for one run and do not change what is remembered: the saved session of a photo (the number of colors, weighting and wheel it was saved with, saved with ⌘S) and options given on the command line (`--wheel`, `--weighting`, `--grading-amount`). Remembered values are in the app's preferences (`defaults read local.coloranalyze`); `defaults delete local.coloranalyze` returns everything to the defaults.
 
 ## Intention
 

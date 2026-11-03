@@ -93,6 +93,8 @@ struct ColorAnalyzeApp: App {
                 Toggle("Show Subject Map", isOn: Bindable(delegate.model).showSaliency)
                     .keyboardShortcut("m", modifiers: [])
                 Toggle("Show Skin Tone Line", isOn: Bindable(delegate.model).showSkinTone)
+                Toggle("Show Pixel Scope", isOn: Bindable(delegate.model).showPixelScope)
+                    .keyboardShortcut("v", modifiers: [])
                 Toggle("Protect Skin Tones", isOn: Bindable(delegate.model).protectSkin)
                 Toggle("Show Series Palette", isOn: Bindable(delegate.model).showSeriesReference)
                 Picker("Color Wheel", selection: Bindable(delegate.model).hueSpace) {

@@ -2355,3 +2355,47 @@ import Testing
         #expect(plain.allSatisfy { !$0.isAccent })
     }
 }
+
+@Suite struct PixelScopeTests {
+    private func pixels(_ color: SRGBColor, count: Int = 400) -> [SIMD3<Float>] {
+        [SIMD3<Float>](repeating: color.linear, count: count)
+    }
+
+    @Test func aColorShowsWhereItsMarkerWouldBe() {
+        let orange = SRGBColor.fromHSB(h: 30, s: 0.8, b: 0.9)
+        let scope = PixelScope(pixels: pixels(orange), space: .rgb)
+        #expect(scope.density(atRGBHue: 30, saturation: 0.8, space: .rgb) > 0.9)
+        #expect(scope.density(atRGBHue: 210, saturation: 0.8, space: .rgb) == 0)
+        #expect(scope.density(atRGBHue: 30, saturation: 0.2, space: .rgb) == 0)
+    }
+
+    @Test func theWheelMovesTheCloud() {
+        // Orange is at 60° on the RYB wheel, where yellow is on the RGB one.
+        let orange = SRGBColor.fromHSB(h: 30, s: 0.8, b: 0.9)
+        let ryb = PixelScope(pixels: pixels(orange), space: .ryb)
+        #expect(ryb.density(atRGBHue: 30, saturation: 0.8, space: .ryb) > 0.9)
+        #expect(ryb.density(atRGBHue: 30, saturation: 0.8, space: .rgb) == 0)
+    }
+
+    @Test func nearlyBlackPixelsAreLeftOut() {
+        let darkRed = SRGBColor(r: 0.02, g: 0.0, b: 0.0)
+        let scope = PixelScope(pixels: pixels(darkRed), space: .rgb)
+        #expect(scope.density.allSatisfy { $0 == 0 })
+    }
+
+    @Test func aTransformGradesThePixelsFirst() {
+        let grey = SRGBColor(r: 0.5, g: 0.5, b: 0.5)
+        let blue = SRGBColor.fromHSB(h: 240, s: 0.7, b: 0.8)
+        let scope = PixelScope(pixels: pixels(grey), space: .rgb) { _, _ in blue.linear }
+        #expect(scope.density(atRGBHue: 240, saturation: 0.7, space: .rgb) > 0.9)
+        #expect(scope.density(atRGBHue: 0, saturation: 0, space: .rgb) == 0)
+    }
+
+    @Test func aBigAreaDoesNotDrownASmallOne() {
+        let sky = SRGBColor.fromHSB(h: 210, s: 0.5, b: 0.9), boat = SRGBColor.fromHSB(h: 0, s: 0.9, b: 0.8)
+        let scope = PixelScope(pixels: pixels(sky, count: 20_000) + pixels(boat, count: 50), space: .rgb)
+        // Log scaling keeps a patch of 50 pixels next to 20,000 clearly visible.
+        #expect(scope.density(atRGBHue: 0, saturation: 0.9, space: .rgb) > 0.3)
+        #expect(scope.image(space: .rgb).width == PixelScope.size)
+    }
+}

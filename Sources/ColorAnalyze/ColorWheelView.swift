@@ -122,6 +122,7 @@ struct ColorWheelView: View {
         let original = model.isShowingOriginal
         let showColors = original || !model.hasAfterColors || markerMode != .targets
         let showTargets = !original && model.hasAfterColors && markerMode != .colors
+        let scopeRequest = model.pixelScopeRequest(after: showTargets)
         VStack(spacing: 16) {
             GeometryReader { geo in
                 // Leave room for the rotation handle, which sits 7% outside the rim at any angle.
@@ -135,6 +136,21 @@ struct ColorWheelView: View {
                         .shadow(color: .black.opacity(0.25), radius: 6)
                         .position(center)
                         .onTapGesture { model.selectedMarkerID = nil }
+
+                    // The wheel is darkened so the cloud of pixels stands out in the wheel's own colors.
+                    if scopeRequest != nil, let scope = model.pixelScopeImage {
+                        Circle()
+                            .fill(.black.opacity(0.55))
+                            .frame(width: side, height: side)
+                            .position(center)
+                            .allowsHitTesting(false)
+                        Image(decorative: scope, scale: 1)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: side * PixelScope.reach, height: side * PixelScope.reach)
+                            .position(center)
+                            .allowsHitTesting(false)
+                    }
 
                     if model.showSkinTone {
                         SkinToneOverlay(space: model.hueSpace, center: center, radius: radius)
@@ -224,6 +240,9 @@ struct ColorWheelView: View {
                 .coordinateSpace(.named("wheel"))
                 .contentShape(Rectangle())
                 .onTapGesture { model.selectedMarkerID = nil }
+                .task(id: scopeRequest?.key) {
+                    if let scopeRequest { await model.renderPixelScope(scopeRequest) }
+                }
             }
             .aspectRatio(1, contentMode: .fit)
             .overlay(alignment: .topTrailing) {
@@ -360,6 +379,8 @@ struct ColorWheelView: View {
                 HStack(spacing: 12) {
                     Toggle("Skin tone line", isOn: $model.showSkinTone)
                         .help("Reference band for skin tones (sRGB hue ≈ 13°–37°). Skin-like colors in the list are marked whether or not the line is shown.")
+                    Toggle("Pixel scope", isOn: $model.showPixelScope)
+                        .help("Shows every pixel of the photo on the wheel as a cloud, like a vectorscope: bright where much of the photo has that hue and saturation. With a graded version or the preview it shows the photo after grading (V).")
                     Toggle("Protect skin tones", isOn: $model.protectSkin)
                         .help("Skin-like colors keep their hue: the grading suggestions do not aim them at the harmony. Right-click a color to override this for one color. Sand, wood or a red wall can look like skin to this rule of thumb.")
                     Spacer(minLength: 0)
