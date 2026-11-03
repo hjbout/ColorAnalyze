@@ -163,6 +163,7 @@ extension AnalysisModel {
             intention: intention,
             harmony: fit.map { .init(fit: $0, autoDetected: harmonyChoice == nil, fitAfter: afterImage == nil ? nil : afterHarmony) },
             whiteBalance: whiteBalance.verdict == .unknown ? nil : .init(whiteBalance),
+            separation: separation.flatMap { $0.verdict == .unknown ? nil : .init($0, after: afterImage == nil ? nil : afterSeparation) },
             colors: records
         )
     }

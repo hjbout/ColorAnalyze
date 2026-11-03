@@ -145,6 +145,8 @@ public struct ColorExport: Codable, Sendable, Equatable {
     public var harmony: Harmony?
     /// Color cast of the nearly neutral parts of the photo; nil when it could not be judged.
     public var whiteBalance: WhiteBalance?
+    /// How well the subject stands apart from the background; nil when there is no subject map.
+    public var separation: Separation?
     public var colors: [ColorRecord]
 
     public struct WhiteBalance: Codable, Sendable, Equatable {
@@ -164,8 +166,45 @@ public struct ColorExport: Codable, Sendable, Equatable {
         }
     }
 
+    public struct Separation: Codable, Sendable, Equatable {
+        public var verdict: String
+        public var subjectSharePercent: Double
+        /// Differences of the mean OKLab colors × 100: apart from lightness, and in lightness (+ = subject lighter).
+        public var colorContrast: Double
+        public var lightnessContrast: Double
+        /// Share of the subject whose color is common in the background.
+        public var blendsInPercent: Double
+        public var subjectHex: String
+        public var backgroundHex: String
+        public var relation: String?
+        /// The same for the graded version (or the prediction).
+        public var after: After?
+
+        public struct After: Codable, Sendable, Equatable {
+            public var verdict: String
+            public var colorContrast: Double
+            public var lightnessContrast: Double
+            public var blendsInPercent: Double
+        }
+
+        public init(_ check: SeparationCheck, after: SeparationCheck? = nil) {
+            func r(_ v: Double) -> Double { (v * 1000).rounded() / 10 }
+            verdict = check.verdict.rawValue
+            subjectSharePercent = r(check.subjectShare)
+            colorContrast = r(check.colorContrast)
+            lightnessContrast = r(check.lightnessContrast)
+            blendsInPercent = r(check.blendShare)
+            subjectHex = check.subjectColor.hex
+            backgroundHex = check.backgroundColor.hex
+            relation = check.relation
+            self.after = after.map { After(verdict: $0.verdict.rawValue, colorContrast: r($0.colorContrast),
+                                           lightnessContrast: r($0.lightnessContrast), blendsInPercent: r($0.blendShare)) }
+        }
+    }
+
     public init(photo: String, graded: String? = nil, exportedAt: Date = Date(), weighting: String? = nil,
-                intention: String? = nil, harmony: Harmony? = nil, whiteBalance: WhiteBalance? = nil, colors: [ColorRecord]) {
+                intention: String? = nil, harmony: Harmony? = nil, whiteBalance: WhiteBalance? = nil,
+                separation: Separation? = nil, colors: [ColorRecord]) {
         self.photo = photo
         self.graded = graded
         self.exportedAt = exportedAt
@@ -173,6 +212,7 @@ public struct ColorExport: Codable, Sendable, Equatable {
         self.intention = Intention.cleaned(intention)
         self.harmony = harmony
         self.whiteBalance = whiteBalance
+        self.separation = separation
         self.colors = colors
     }
 

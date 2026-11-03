@@ -300,6 +300,9 @@ struct ColorWheelView: View {
         }
         .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The subject map is detected for the separation check whether or not the colors are weighted.
+        .task(id: model.image?.url) { _ = await model.ensureSaliency(reportsFailure: false) }
+        .task(id: model.separationRequestKey) { await model.refreshSeparation() }
     }
 
     private func seriesFitView(_ fit: PhotoConsistency, after: PhotoConsistency?) -> some View {
@@ -476,18 +479,28 @@ struct ColorWheelView: View {
             IntentionField(title: "Intention", placeholder: "What should this photo feel like?",
                            text: $model.intention)
             whiteBalanceNote()
+            separationNote()
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Aim at").help("Harmony: tint toward the harmony's hues. Series / Reference: toward that palette. Tints: strengthen the faint tint each tonal range already has.")
+                    Text("Aim at").help("Harmony: tint toward the harmony's hues. Series / Reference: toward that palette. Separation: turn the background's colors away from the subject's, so the subject stands apart. Tints: strengthen the faint tint each tonal range already has.")
                     Picker("Aim at", selection: $model.gradingTarget) {
                         Text("Harmony").tag(AnalysisModel.GradingTarget.harmony)
                         if model.isSeriesReferenceShown {
                             Text(model.referenceTitle).tag(AnalysisModel.GradingTarget.series)
                         }
+                        Text("Separation").tag(AnalysisModel.GradingTarget.separation)
                         Text("Tints").tag(AnalysisModel.GradingTarget.emphasize)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
+                }
+                if model.separationFallsBack {
+                    Text(model.saliency == nil
+                         ? "Separation needs the subject, which has not been found (yet): the grading aims at the harmony."
+                         : "The subject has no color of its own to stand apart with: the grading aims at the harmony. Lightness can still separate it (a local adjustment in PhotoLab).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if model.gradingFallsBackToTints {
                     Text("The colors are nearly neutral, so there is nothing to aim at: the grading strengthens the tints the photo already has.")
@@ -715,6 +728,49 @@ struct ColorWheelView: View {
         case .onTarget: "already on target"
         case .tooNeutral: "too neutral to tint"
         }
+    }
+
+    /// How well the subject stands apart from the background, and what the grading does to it.
+    @ViewBuilder
+    private func separationNote() -> some View {
+        if let check = model.separation, check.verdict != .unknown {
+            let (symbol, tint): (String, Color) = switch check.verdict {
+            case .strong: ("checkmark.circle", .green)
+            case .weak: ("exclamationmark.triangle", .orange)
+            default: ("circle.lefthalf.filled", .secondary)
+            }
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: symbol)
+                    .foregroundStyle(tint)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("Separation: \(check.verdict.rawValue)")
+                        Spacer(minLength: 0)
+                        SeparationSwatch(color: check.subjectColor, label: "Subject")
+                        SeparationSwatch(color: check.backgroundColor, label: "Background")
+                    }
+                    Text(Self.separationSummary(check))
+                        .foregroundStyle(.secondary)
+                    if let after = model.afterSeparation {
+                        let better = after.colorContrast > check.colorContrast + 0.005 || abs(after.lightnessContrast) > abs(check.lightnessContrast) + 0.005
+                        let worse = after.colorContrast < check.colorContrast - 0.005 || abs(after.lightnessContrast) < abs(check.lightnessContrast) - 0.005
+                        Text("\(model.afterLabel): color Δ \(Self.points(check.colorContrast)) → \(Self.points(after.colorContrast)) · lightness Δ \(Self.points(abs(check.lightnessContrast))) → \(Self.points(abs(after.lightnessContrast))) · blends in \(Self.percent(check.blendShare)) → \(Self.percent(after.blendShare))")
+                            .foregroundStyle(better && !worse ? Color.green : worse && !better ? Color.red : Color.secondary)
+                    }
+                }
+            }
+            .font(.caption)
+            .fixedSize(horizontal: false, vertical: true)
+            .help("Subject and background from the attention map (show it with the Subject Map, M), compared in OKLab: Δ is the difference of their mean colors × 100, apart from lightness (color) and in lightness. “Blends in” is the share of the subject whose color is common in the background. Colorists set separation, with skin, first; Aim at ▸ Separation turns the background's colors away from the subject's.")
+        }
+    }
+
+    static func points(_ value: Double) -> String { String(format: "%.1f", value * 100) }
+    static func percent(_ value: Double) -> String { "\(Int((value * 100).rounded())) %" }
+
+    static func separationSummary(_ check: SeparationCheck) -> String {
+        let relation = check.relation.map { "The subject is \($0) than the background" } ?? "The subject is much like the background"
+        return "\(relation) (color Δ \(points(check.colorContrast)), lightness Δ \(points(abs(check.lightnessContrast)))); \(percent(check.blendShare)) of it has colors that are common in the background."
     }
 
     /// A hint when the nearly neutral parts of the photo lean to a color: grading comes after white balance.
@@ -970,5 +1026,22 @@ struct AfterTrails: View {
         }
         .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
         .shadow(color: .black.opacity(0.7), radius: 1.5)
+    }
+}
+
+/// A small swatch with a label, for the mean colors of subject and background.
+private struct SeparationSwatch: View {
+    let color: SRGBColor
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 3) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color(.sRGB, red: color.r, green: color.g, blue: color.b))
+                .frame(width: 14, height: 14)
+                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(.primary.opacity(0.2)))
+            Text(label).foregroundStyle(.secondary)
+        }
+        .help("Mean color of the \(label.lowercased()): \(color.hex)")
     }
 }

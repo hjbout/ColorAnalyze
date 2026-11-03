@@ -365,8 +365,14 @@ final class AnalysisModel {
     /// True when the current shares and markers were computed with subject weights.
     var isWeighted = false
     @ObservationIgnored var weights: [Float]?
-    @ObservationIgnored var saliency: [Float]?
+    /// The attention map of the photo at the analysis size, once detected. Observed: the separation check waits for it.
+    var saliency: [Float]?
     @ObservationIgnored var saliencyFailed = false
+    /// How well the subject stands apart from the background, and the same after grading (graded version or preview).
+    var separation: SeparationCheck?
+    var afterSeparation: SeparationCheck?
+    @ObservationIgnored var separationKey: Int?
+    @ObservationIgnored var subjectFractionCache: (key: Int, fractions: [Double])?
 
     /// What the photo should feel like, written down before choosing a harmony. Saved in the session.
     var intention = "" {
@@ -514,6 +520,9 @@ final class AnalysisModel {
                 viewport.fit()
                 saliency = nil
                 saliencyFailed = false
+                separation = nil
+                afterSeparation = nil
+                separationKey = nil
                 saliencyOverlay = nil
                 setWeights(nil)
                 compareMode = .split
@@ -633,9 +642,15 @@ final class AnalysisModel {
     }
 
     /// Detects the subject once per photo, at the resolution used for analysis.
-    func ensureSaliency() async -> [Float]? {
+    /// `reportsFailure` false keeps quiet about a subject that cannot be found (for the separation check, which then
+    /// just says nothing); the weighting reports it.
+    func ensureSaliency(reportsFailure: Bool = true) async -> [Float]? {
         if let saliency { return saliency }
-        guard let image, !saliencyFailed else { return nil }
+        guard let image else { return nil }
+        guard !saliencyFailed else {
+            if reportsFailure { errorMessage = Self.saliencyFailureMessage }
+            return nil
+        }
         let (width, height) = (image.analysis.width, image.analysis.height)
         let map = await Task.detached(priority: .userInitiated) {
             try? Saliency.attentionMap(for: image.display, width: width, height: height)
@@ -645,10 +660,12 @@ final class AnalysisModel {
             saliency = map
         } else {
             saliencyFailed = true
-            errorMessage = "The subject of the photo could not be detected, so the colors are not weighted."
+            if reportsFailure { errorMessage = Self.saliencyFailureMessage }
         }
         return map
     }
+
+    static let saliencyFailureMessage = "The subject of the photo could not be detected, so the colors are not weighted."
 
     func refreshSaliencyOverlay() {
         guard showSaliency else {

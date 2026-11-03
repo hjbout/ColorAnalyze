@@ -15,6 +15,8 @@ extension AnalysisModel {
         case series
         /// Strengthen the faint tint each tonal range already has (for photos without real colors).
         case emphasize
+        /// Push the background's hues away from the subject's, so the subject stands apart (`SeparationCheck`).
+        case separation
         var id: String { rawValue }
     }
 
@@ -35,14 +37,18 @@ extension AnalysisModel {
         switch target {
         case .emphasize: return .emphasize
         case .series where isSeriesReferenceShown: return .series
+        case .separation where !subjectHueAngles.isEmpty: return .separation
         default: return harmony == nil ? .emphasize : .harmony
         }
     }
 
     /// True when "Harmony" or "Series" was chosen but the grading falls back to the existing tints.
     var gradingFallsBackToTints: Bool {
-        gradingTarget != .emphasize && effectiveGradingTarget == .emphasize
+        gradingTarget != .emphasize && gradingTarget != .separation && effectiveGradingTarget == .emphasize
     }
+
+    /// True when "Separation" was chosen but there is no subject with a color of its own to stand apart from.
+    var separationFallsBack: Bool { gradingTarget == .separation && effectiveGradingTarget != .separation }
 
     /// Per tonal range, the tint that brings the photo's colors closest to the harmony (or the series palette), found with
     /// the calibrated model of PhotoLab's Color Grading. The result is kept until something it depends on changes.
@@ -81,6 +87,7 @@ extension AnalysisModel {
         hasher.combine(harmonySector)
         hasher.combine(isSeriesReferenceShown)
         hasher.combine(referencePhoto?.url.path)
+        hasher.combine(saliency != nil)
         for color in seriesPalette { hasher.combine(color.color.hex) }
         return hasher.finalize()
     }
@@ -113,6 +120,17 @@ extension AnalysisModel {
                     inputs.append(.init(color: marker.color, share: marker.share, targetHue: marker.color.hsb.h + shift))
                 }
             }
+        case .separation:
+            inputs = markers.map { marker in
+                let hue = marker.color.hsb.h
+                if let target = marker.targetHue { return .init(color: marker.color, share: marker.share, targetHue: target) }
+                if let shift = separationShift(for: marker) {
+                    return .init(color: marker.color, share: marker.share, targetHue: hue + shift)
+                }
+                // The subject's own colors, colors it shares with the background, and greys stay as they are.
+                let holds = marker.color.chroma >= DxOMapping.neutralChroma && (isProtected(marker) || !isBackground(marker))
+                return .init(color: marker.color, share: marker.share, targetHue: hue, isProtected: holds)
+            }
         }
         return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: setup.style, scale: setup.amount)
     }
@@ -130,6 +148,7 @@ extension AnalysisModel {
             let target: Double? = switch aim {
             case .harmony: fit?.shift(for: marker.color.hsb.h)
             case .series: seriesMatch(for: marker)?.hueShift
+            case .separation: separationShift(for: marker)
             case .emphasize: nil
             }
             // Less than 1 turns part of the way; more than 1 would only turn the color past its target.

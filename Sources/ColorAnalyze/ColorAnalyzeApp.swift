@@ -201,7 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //     [--export-colors list.csv|list.json] [--export-colors-excel list.csv]
         //     [--weighting off|moderate|strong] [--wheel rgb|ryb|dxo|oklch] [--intention "warm, calm"]
         //     [--export-dxo-preset grading.preset] [--grading-amount 0-3] [--grading-style neutral|warm-highlights|cool-highlights|teal-orange|warm-overall|cool-overall|faded]
-        //     [--grading-target harmony|series|reference] [--protect 2,5] [--harmony-sector exact|narrow|wide|0-30] [--protect-skin on|off]`
+        //     [--grading-target harmony|series|reference|separation|emphasize] [--protect 2,5] [--harmony-sector exact|narrow|wide|0-30] [--protect-skin on|off]`
         // `ColorAnalyze --series a.jpg b.jpg … [--series-colors N] [--palette-size N]
         //     [--export-series palette.csv|series.json] [--export-series-photos photos.csv]
         //     [--export-series-report overview.png]`
@@ -377,6 +377,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let gradingAmount { model.withoutRemembering { model.gradingAmount = gradingAmount } }
             if let gradingStyle { model.withoutRemembering { model.gradingStyle = gradingStyle } }
             if let gradingTarget { model.gradingTarget = gradingTarget }
+            // The subject map, for the separation check and the Separation aim; the window detects it by itself.
+            if hasExports, openedPhoto != nil {
+                _ = await model.ensureSaliency(reportsFailure: false)
+                await model.refreshSeparation()
+            }
             // Problems that the windows show in an alert (a subject that was not found, photos that could not be read)
             // go to stderr in a batch run, where nobody sees a window.
             if hasExports {

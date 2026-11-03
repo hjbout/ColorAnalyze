@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import simd
 import Testing
 @testable import ColorCore
 
@@ -2397,5 +2398,93 @@ import Testing
         // Log scaling keeps a patch of 50 pixels next to 20,000 clearly visible.
         #expect(scope.density(atRGBHue: 0, saturation: 0.9, space: .rgb) > 0.3)
         #expect(scope.image(space: .rgb).width == PixelScope.size)
+    }
+}
+
+@Suite struct SeparationTests {
+    /// A photo of `n` pixels: the first `subject` of them are the subject (saliency 1) in `inside`, the rest `outside`.
+    private func photo(subject: Int, of n: Int = 1000, inside: SRGBColor, outside: SRGBColor) -> (lab: [SIMD3<Float>], map: [Float]) {
+        ((0..<n).map { $0 < subject ? inside.oklab : outside.oklab }, (0..<n).map { $0 < subject ? 1 : 0 })
+    }
+
+    @Test func aWarmSubjectOnACoolBackgroundStandsApart() {
+        let p = photo(subject: 100, inside: SRGBColor(r: 0.85, g: 0.45, b: 0.2), outside: SRGBColor(r: 0.2, g: 0.35, b: 0.55))
+        let check = SeparationCheck.check(lab: p.lab, saliency: p.map)
+        #expect(check.verdict == .strong)
+        #expect(abs(check.subjectShare - 0.1) < 1e-6)
+        #expect(check.blendShare == 0)
+        #expect(check.relation?.contains("warmer") == true)
+        #expect(check.relation?.contains("lighter") == true)
+    }
+
+    @Test func aSubjectInTheBackgroundsColorsBlendsIn() {
+        let green = SRGBColor(r: 0.3, g: 0.5, b: 0.25)
+        let p = photo(subject: 100, inside: green, outside: green)
+        let check = SeparationCheck.check(lab: p.lab, saliency: p.map)
+        #expect(check.verdict == .weak)
+        #expect(check.blendShare > 0.99)
+        #expect(check.relation == nil)
+        #expect(check.subjectHueAngle != nil)
+    }
+
+    @Test func withoutASubjectThereIsNoVerdict() {
+        let p = photo(subject: 0, inside: .init(r: 1, g: 0, b: 0), outside: .init(r: 0, g: 0, b: 1))
+        #expect(SeparationCheck.check(lab: p.lab, saliency: p.map).verdict == .unknown)
+    }
+
+    @Test func colorsAreSortedIntoSubjectAndBackground() {
+        let red = SRGBColor(r: 0.8, g: 0.2, b: 0.2), blue = SRGBColor(r: 0.2, g: 0.3, b: 0.7)
+        let p = photo(subject: 100, inside: red, outside: blue)
+        let fractions = SeparationCheck.subjectFractions(lab: p.lab, saliency: p.map,
+                                                         colors: [red.oklab, blue.oklab, SRGBColor(r: 1, g: 1, b: 0).oklab])
+        #expect(fractions == [1, 0, 0])
+    }
+
+    @Test func aimingAtSeparationSetsTheSubjectFurtherApart() {
+        // A skin-colored subject in front of a darker olive wall: the wall is turned away from the skin, the skin is held.
+        // As in the app, the preview is the Color Grading wheels plus the HSL hue turns.
+        let skin = SRGBColor(r: 0.82, g: 0.58, b: 0.45), wall = SRGBColor.fromHSB(h: 50, s: 0.45, b: 0.5)
+        let p = photo(subject: 150, inside: skin, outside: wall)
+        let skinLab = skin.oklab
+        let subjectAngle = Double(atan2(skinLab.z, skinLab.y)) * 180 / .pi
+        let target = SeparationCheck.separatedHue(of: wall, fromSubjectAngle: subjectAngle)
+        let inputs: [ColorGradingSuggestion.Input] = [
+            .init(color: skin, share: 0.15, targetHue: skin.hsb.h, isProtected: true),
+            .init(color: wall, share: 0.85, targetHue: target),
+        ]
+        let preset = ColorGradingSuggestion.optimized(from: inputs, strength: .moderate).preset
+        func tint(_ w: ColorGradingPreset.Wheel) -> GradePreviewSettings.Tint {
+            .init(dxoHue: Double(w.hue), saturation: Double(w.saturation), luminance: Double(w.luminance))
+        }
+        var settings = GradePreviewSettings(shadows: tint(preset.shadows), midtones: tint(preset.midtones),
+                                            highlights: tint(preset.highlights), master: tint(preset.master),
+                                            balance: Double(preset.balance))
+        for channel in HSLSuggestion.channels(from: [
+            .init(number: 1, color: skin, share: 0.15, hueShift: nil),
+            .init(number: 2, color: wall, share: 0.85, hueShift: ColorMath.signedAngle(from: wall.hsb.h, to: target)),
+        ]) { settings.hueShifts[channel.channel] = channel.hueShift }
+        let plan = GradePreview.Plan(settings)
+        let before = SeparationCheck.check(lab: p.lab, saliency: p.map)
+        let after = SeparationCheck.check(lab: p.lab.map { plan.apply($0) }, saliency: p.map)
+        #expect(after.colorContrast > before.colorContrast + 0.01)
+        // The skin keeps its color.
+        #expect(simd_distance(plan.apply(skinLab), skinLab) < 0.01)
+    }
+
+    @Test func aBackgroundHueIsTurnedAwayFromTheSubject() {
+        let skin = SRGBColor(r: 0.8, g: 0.55, b: 0.4)
+        let lab = skin.oklab
+        let subjectAngle = Double(atan2(lab.z, lab.y)) * 180 / .pi
+        func angle(_ c: SRGBColor) -> Double { Double(atan2(c.oklab.z, c.oklab.y)) * 180 / .pi }
+        // A yellowish wall 20° from the skin is turned further toward yellow-green.
+        let wall = SRGBColor.fromHSB(h: 45, s: 0.5, b: 0.7)
+        let turned = SRGBColor.fromHSB(h: SeparationCheck.separatedHue(of: wall, fromSubjectAngle: subjectAngle), s: 0.5, b: 0.7)
+        let before = abs(ColorMath.signedAngle(from: subjectAngle, to: angle(wall)))
+        let after = abs(ColorMath.signedAngle(from: subjectAngle, to: angle(turned)))
+        #expect(after > before + 20)
+        #expect(after <= 92)
+        // A blue sky is far enough already.
+        let sky = SRGBColor.fromHSB(h: 215, s: 0.5, b: 0.8)
+        #expect(SeparationCheck.separatedHue(of: sky, fromSubjectAngle: subjectAngle) == sky.hsb.h)
     }
 }
