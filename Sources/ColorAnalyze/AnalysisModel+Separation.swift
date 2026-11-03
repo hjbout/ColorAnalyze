@@ -5,12 +5,61 @@ import Foundation
 extension AnalysisModel {
     // MARK: Separation of subject and background
 
+    /// The map the subject is taken from: the foreground mask, or the attention map when the photo has no foreground.
+    /// Nil until both have been looked for.
+    var separationSubjectMap: [Float]? {
+        if let foregroundMask { return foregroundMask }
+        return foregroundMaskChecked ? saliency : nil
+    }
+
+    /// Looks for a foreground (people, animals, objects) once per photo.
+    func ensureForegroundMask() async {
+        guard !foregroundMaskChecked, let image else { return }
+        if let running = foregroundMaskTask { return await running.value }
+        let display = image.display
+        let sizes = [(image.analysis.width, image.analysis.height), (image.sampling.width, image.sampling.height)]
+        let task = Task {
+            let masks = await Task.detached(priority: .userInitiated) {
+                try? Saliency.foregroundMasks(for: display, sizes: sizes)
+            }.value
+            guard self.image?.display === display else { return }
+            foregroundMask = masks?[0]
+            foregroundDisplayMask = masks.map { ($0[1], sizes[1].0, sizes[1].1) }
+            foregroundMaskChecked = true
+        }
+        foregroundMaskTask = task
+        await task.value
+        foregroundMaskTask = nil
+    }
+
+    /// Shows or hides the foreground mask over the photo: what the separation check takes as the subject.
+    func refreshForegroundOverlay() {
+        guard showForeground else {
+            foregroundOverlay = nil
+            return
+        }
+        Task {
+            await ensureForegroundMask()
+            guard showForeground else { return }
+            foregroundOverlay = foregroundDisplayMask.flatMap {
+                Saliency.spotlightImage(map: $0.values, width: $0.width, height: $0.height)
+            }
+        }
+    }
+
+    /// Finds the subject for the separation check: the foreground, and the attention map in case there is none.
+    func prepareSubject() async {
+        await ensureForegroundMask()
+        _ = await ensureSaliency(reportsFailure: false)
+    }
+
     /// What the separation check depends on: the photo, its subject map, and the graded version or the predicted grading.
     /// Nil until the subject map is there.
     var separationRequestKey: Int? {
-        guard let image, saliency != nil else { return nil }
+        guard let image, separationSubjectMap != nil else { return nil }
         var hasher = Hasher()
         hasher.combine(ObjectIdentifier(image.display))
+        hasher.combine(foregroundMask != nil)
         if let afterImage {
             hasher.combine(ObjectIdentifier(afterImage.display))
         } else if isPreviewActive {
@@ -21,8 +70,9 @@ extension AnalysisModel {
 
     /// Checks the separation of the photo (once) and of the graded version or the prediction, in the background.
     func refreshSeparation() async {
-        guard let key = separationRequestKey, key != separationKey, let image, let map = saliency else { return }
-        let before = separation
+        guard let key = separationRequestKey, key != separationKey, let image, let map = separationSubjectMap else { return }
+        // The photo's own check is kept unless the subject map changed (the foreground found after the attention map).
+        let before = separationUsesForeground == (foregroundMask != nil) ? separation : nil
         let lab = image.analysis.lab
         // A graded version only counts when it has the photo's framing, so the subject map fits it.
         let graded = afterImage.flatMap {
@@ -43,11 +93,12 @@ extension AnalysisModel {
         separation = result.0
         afterSeparation = result.1
         separationKey = key
+        separationUsesForeground = foregroundMask != nil
     }
 
     /// Per marker, the share of the pixels nearest to its color that are subject (empty without a subject map).
     var subjectFractions: [Double] {
-        guard let image, let map = saliency else { return [] }
+        guard let image, let map = separationSubjectMap else { return [] }
         let key = markersKey
         if let cache = subjectFractionCache, cache.key == key, cache.fractions.count == markers.count { return cache.fractions }
         let fractions = SeparationCheck.subjectFractions(lab: image.analysis.lab, saliency: map,

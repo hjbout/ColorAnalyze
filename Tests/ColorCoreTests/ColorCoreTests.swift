@@ -2427,6 +2427,24 @@ import Testing
         #expect(check.subjectHueAngle != nil)
     }
 
+    @Test func theSoftEdgeOfTheSubjectCountsAsNeither() {
+        // An attention map fades out around the subject; the fade covers background colors and must not make the
+        // subject look as if it blends in.
+        let red = SRGBColor(r: 0.8, g: 0.25, b: 0.2), blue = SRGBColor(r: 0.2, g: 0.3, b: 0.6)
+        let lab = (0..<1000).map { $0 < 100 ? red.oklab : blue.oklab }
+        let map: [Float] = (0..<1000).map { $0 < 100 ? 1 : $0 < 300 ? 0.4 : 0 }
+        let check = SeparationCheck.check(lab: lab, saliency: map)
+        #expect(check.blendShare == 0)
+        #expect(abs(check.subjectShare - 0.1) < 1e-6)
+        #expect(check.verdict == .strong)
+    }
+
+    @Test func aFineMaskIsAveragedOntoTheAnalysisGrid() {
+        let fine: [Float] = [1, 1, 0, 0,
+                             1, 1, 0, 0]
+        #expect(Saliency.boxDownsample(grid: fine, gridWidth: 4, gridHeight: 2, width: 2, height: 1) == [1, 0])
+    }
+
     @Test func withoutASubjectThereIsNoVerdict() {
         let p = photo(subject: 0, inside: .init(r: 1, g: 0, b: 0), outside: .init(r: 0, g: 0, b: 1))
         #expect(SeparationCheck.check(lab: p.lab, saliency: p.map).verdict == .unknown)

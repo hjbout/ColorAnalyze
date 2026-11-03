@@ -301,7 +301,7 @@ struct ColorWheelView: View {
         .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // The subject map is detected for the separation check whether or not the colors are weighted.
-        .task(id: model.image?.url) { _ = await model.ensureSaliency(reportsFailure: false) }
+        .task(id: model.image?.url) { await model.prepareSubject() }
         .task(id: model.separationRequestKey) { await model.refreshSeparation() }
     }
 
@@ -495,7 +495,7 @@ struct ColorWheelView: View {
                     .labelsHidden()
                 }
                 if model.separationFallsBack {
-                    Text(model.saliency == nil
+                    Text(model.separationSubjectMap == nil
                          ? "Separation needs the subject, which has not been found (yet): the grading aims at the harmony."
                          : "The subject has no color of its own to stand apart with: the grading aims at the harmony. Lightness can still separate it (a local adjustment in PhotoLab).")
                         .font(.caption)
@@ -751,6 +751,18 @@ struct ColorWheelView: View {
                     }
                     Text(Self.separationSummary(check))
                         .foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(model.separationUsesForeground
+                             ? "Subject: the outlined foreground (\(Self.percent(check.subjectShare)) of the photo)."
+                             : "Subject: where a viewer looks (\(Self.percent(check.subjectShare)) of the photo); no foreground was found to outline.")
+                            .foregroundStyle(.tertiary)
+                        Spacer(minLength: 0)
+                        Button(model.separationUsesForeground ? (model.showForeground ? "Hide" : "Show") : (model.showSaliency ? "Hide" : "Show")) {
+                            if model.separationUsesForeground { model.showForeground.toggle() } else { model.showSaliency.toggle() }
+                        }
+                        .buttonStyle(.link)
+                        .help(model.separationUsesForeground ? "Show the foreground on the photo (F)" : "Show the Subject Map on the photo (M)")
+                    }
                     if let after = model.afterSeparation {
                         let better = after.colorContrast > check.colorContrast + 0.005 || abs(after.lightnessContrast) > abs(check.lightnessContrast) + 0.005
                         let worse = after.colorContrast < check.colorContrast - 0.005 || abs(after.lightnessContrast) < abs(check.lightnessContrast) - 0.005
@@ -761,7 +773,7 @@ struct ColorWheelView: View {
             }
             .font(.caption)
             .fixedSize(horizontal: false, vertical: true)
-            .help("Subject and background from the attention map (show it with the Subject Map, M), compared in OKLab: Δ is the difference of their mean colors × 100, apart from lightness (color) and in lightness. “Blends in” is the share of the subject whose color is common in the background. Colorists set separation, with skin, first; Aim at ▸ Separation turns the background's colors away from the subject's.")
+            .help("Subject and background from Vision's foreground mask (people, animals, objects), or from the attention map when there is no foreground (show it with the Subject Map, M), compared in OKLab: Δ is the difference of their mean colors × 100, apart from lightness (color) and in lightness. “Blends in” is the share of the subject whose color is common in the background. Colorists set separation, with skin, first; Aim at ▸ Separation turns the background's colors away from the subject's.")
         }
     }
 

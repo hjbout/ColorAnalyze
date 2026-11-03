@@ -87,7 +87,8 @@ extension AnalysisModel {
         hasher.combine(harmonySector)
         hasher.combine(isSeriesReferenceShown)
         hasher.combine(referencePhoto?.url.path)
-        hasher.combine(saliency != nil)
+        hasher.combine(separationSubjectMap != nil)
+        hasher.combine(foregroundMask != nil)
         for color in seriesPalette { hasher.combine(color.color.hex) }
         return hasher.finalize()
     }

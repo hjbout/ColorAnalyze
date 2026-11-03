@@ -5,8 +5,10 @@ import simd
 /// colorists set first in the balance: a subject that shares its colors and lightness with its surroundings does not
 /// stand out, however harmonious those colors are.
 ///
-/// The subject is taken from the attention map (`Saliency`), weighted as the Subject Map shows it; the rest is the
-/// background. Both are summarized in OKLab: their mean color (lightness and the a/b direction), their mean chroma, and how
+/// The subject is taken from a map of the photo: Vision's foreground mask when the photo has a foreground (it follows the
+/// outline of people and objects), or else the attention map. Only the core of the subject counts as subject (weight 0.5 and
+/// up) and only what is clearly outside it as background, so the soft edge of an attention map, which covers subject and
+/// background alike, counts as neither. Both are summarized in OKLab: their mean color (lightness and the a/b direction), their mean chroma, and how
 /// much of the subject has colors that are common in the background (it *blends in* there).
 public struct SeparationCheck: Sendable, Equatable {
     public enum Verdict: String, Sendable { case strong, moderate, weak, unknown }
@@ -83,10 +85,17 @@ public struct SeparationCheck: Sendable, Equatable {
         return parts.isEmpty ? last : parts.joined(separator: ", ") + " and " + last
     }
 
-    /// How much a pixel belongs to the subject: a smoothstep of its saliency over 0.15...0.85, as the Subject Map shows it.
+    /// How much a pixel belongs to the subject: a smoothstep of its map value over 0.15...0.85, as the Subject Map shows it.
     public static func subjectWeight(_ saliency: Float) -> Float {
         let t = min(1, max(0, (saliency - 0.15) / 0.7))
         return t * t * (3 - 2 * t)
+    }
+
+    /// How much a pixel counts as subject and as background: the core of the subject (weight 0.5 and up) and what is
+    /// clearly outside it (below 0.02); the edge in between counts as neither.
+    static func weights(_ saliency: Float) -> (subject: Float, background: Float) {
+        let w = subjectWeight(saliency)
+        return (w >= 0.5 ? w : 0, w < 0.02 ? 1 : 0)
     }
 
     /// Checks `lab` (one OKLab color per pixel) against `saliency` (the attention map at the same size).
@@ -97,7 +106,7 @@ public struct SeparationCheck: Sendable, Equatable {
         var mass = (subject: 0.0, background: 0.0)
         var histogram = [Float](repeating: 0, count: Bins.count)
         for (p, s) in zip(lab, saliency) {
-            let w = subjectWeight(s), rest = 1 - w
+            let (w, rest) = weights(s)
             let c = Double((p.y * p.y + p.z * p.z).squareRoot())
             sums.subject += w * p
             sums.background += rest * p
@@ -115,7 +124,7 @@ public struct SeparationCheck: Sendable, Equatable {
         let threshold = Float(mass.background) * 0.01
         var blended = 0.0
         for (p, s) in zip(lab, saliency) {
-            let w = subjectWeight(s)
+            let w = weights(s).subject
             guard w > 0 else { continue }
             if Bins.neighborhoodMass(of: p, in: histogram) >= threshold { blended += Double(w) }
         }
@@ -136,8 +145,9 @@ public struct SeparationCheck: Sendable, Equatable {
                 let d = simd_distance_squared(p, c)
                 if d < bestDistance { best = i; bestDistance = d }
             }
-            subject[best] += Double(subjectWeight(s))
-            total[best] += 1
+            let (w, rest) = weights(s)
+            subject[best] += Double(w)
+            total[best] += Double(w + rest)
         }
         return zip(subject, total).map { $1 > 0 ? $0 / $1 : 0 }
     }

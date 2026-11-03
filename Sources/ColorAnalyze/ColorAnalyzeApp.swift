@@ -92,6 +92,8 @@ struct ColorAnalyzeApp: App {
                 }
                 Toggle("Show Subject Map", isOn: Bindable(delegate.model).showSaliency)
                     .keyboardShortcut("m", modifiers: [])
+                Toggle("Show Foreground", isOn: Bindable(delegate.model).showForeground)
+                    .keyboardShortcut("f", modifiers: [])
                 Toggle("Show Skin Tone Line", isOn: Bindable(delegate.model).showSkinTone)
                 Toggle("Show Pixel Scope", isOn: Bindable(delegate.model).showPixelScope)
                     .keyboardShortcut("v", modifiers: [])
@@ -379,7 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let gradingTarget { model.gradingTarget = gradingTarget }
             // The subject map, for the separation check and the Separation aim; the window detects it by itself.
             if hasExports, openedPhoto != nil {
-                _ = await model.ensureSaliency(reportsFailure: false)
+                await model.prepareSubject()
                 await model.refreshSeparation()
             }
             // Problems that the windows show in an alert (a subject that was not found, photos that could not be read)

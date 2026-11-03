@@ -26,6 +26,42 @@ public enum Saliency {
                         width: width, height: height)
     }
 
+    /// The foreground objects of the photo as a `width`×`height` mask with values in 0...1 (1 = subject), row-major from
+    /// the top-left: Vision's foreground instance mask, the "lift subject" of Photos, with all instances together. Unlike
+    /// the attention map it follows the outline of people, animals and objects, so it tells subject from background
+    /// pixel by pixel. Nil when the photo has no foreground (a landscape).
+    public static func foregroundMask(for image: CGImage, width: Int, height: Int) throws -> [Float]? {
+        try foregroundMasks(for: image, sizes: [(width, height)])?.first
+    }
+
+    /// The foreground mask at several sizes from one detection (one for the analysis, a finer one to show).
+    public static func foregroundMasks(for image: CGImage, sizes: [(width: Int, height: Int)]) throws -> [[Float]]? {
+        let request = VNGenerateForegroundInstanceMaskRequest()
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        try handler.perform([request])
+        guard let observation = request.results?.first, !observation.allInstances.isEmpty else { return nil }
+        let buffer = try observation.generateScaledMaskForImage(forInstances: observation.allInstances, from: handler)
+        let grid = readGrid(buffer)
+        guard grid.width > 0, grid.height > 0 else { return nil }
+        return sizes.map {
+            boxDownsample(grid: grid.values, gridWidth: grid.width, gridHeight: grid.height, width: $0.width, height: $0.height)
+        }
+    }
+
+    /// Area average of a fine grid onto a coarser one.
+    static func boxDownsample(grid: [Float], gridWidth gw: Int, gridHeight gh: Int, width: Int, height: Int) -> [Float] {
+        var sums = [Float](repeating: 0, count: width * height), counts = sums
+        for y in 0..<gh {
+            let ty = min(height - 1, y * height / gh)
+            for x in 0..<gw {
+                let i = ty * width + min(width - 1, x * width / gw)
+                sums[i] += grid[y * gw + x]
+                counts[i] += 1
+            }
+        }
+        return zip(sums, counts).map { $1 > 0 ? $0 / $1 : 0 }
+    }
+
     /// Per-pixel weights: 1 for the background up to `1 + strength` on the most salient spot.
     public static func weights(for map: [Float], strength: Float) -> [Float] {
         map.map { 1 + strength * $0 }

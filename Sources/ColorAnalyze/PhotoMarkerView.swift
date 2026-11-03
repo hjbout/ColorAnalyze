@@ -133,6 +133,12 @@ struct PhotoMarkerView: View {
                     .interpolation(.high)
                     .allowsHitTesting(false)
             }
+            if model.showForeground, let foreground = model.foregroundOverlay {
+                Image(decorative: foreground, scale: 1)
+                    .resizable()
+                    .interpolation(.high)
+                    .allowsHitTesting(false)
+            }
             if let overlay = model.regionOverlay {
                 Image(decorative: overlay, scale: 1)
                     .resizable()
@@ -318,6 +324,16 @@ struct PhotoMarkerView: View {
             }
             if model.showSaliency, model.saliencyOverlay != nil {
                 Label("Subject map — the darker the area, the less it counts", systemImage: "viewfinder")
+                    .font(.caption)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.regularMaterial, in: Capsule())
+            }
+            if model.showForeground, model.foregroundMaskChecked {
+                Label(model.foregroundOverlay != nil
+                      ? "Foreground — what the separation check takes as the subject"
+                      : "No foreground found — the separation check uses where a viewer looks (Subject Map, M)",
+                      systemImage: "person.crop.rectangle")
                     .font(.caption)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)

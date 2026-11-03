@@ -134,6 +134,7 @@ struct ContentView: View {
                     .pickerStyle(.inline)
                     Divider()
                     Toggle("Show Subject Map", isOn: $model.showSaliency)
+                    Toggle("Show Foreground (for Separation)", isOn: $model.showForeground)
                 } label: {
                     Label("Subject", systemImage: model.weighting == .off ? "viewfinder" : "viewfinder.circle.fill")
                 }

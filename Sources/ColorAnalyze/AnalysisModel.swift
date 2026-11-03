@@ -359,8 +359,21 @@ final class AnalysisModel {
     @ObservationIgnored var pixelScopeKey: Int?
     /// Darkens everything but the detected subject, to show what the weighting is based on.
     var showSaliency = false {
-        didSet { if showSaliency != oldValue { refreshSaliencyOverlay() } }
+        didSet {
+            guard showSaliency != oldValue else { return }
+            if showSaliency { showForeground = false }
+            refreshSaliencyOverlay()
+        }
     }
+    /// Darkens everything but the foreground the separation check uses as the subject (one of the two maps at a time).
+    var showForeground = false {
+        didSet {
+            guard showForeground != oldValue else { return }
+            if showForeground { showSaliency = false }
+            refreshForegroundOverlay()
+        }
+    }
+    var foregroundOverlay: CGImage?
     var saliencyOverlay: CGImage?
     /// True when the current shares and markers were computed with subject weights.
     var isWeighted = false
@@ -368,10 +381,18 @@ final class AnalysisModel {
     /// The attention map of the photo at the analysis size, once detected. Observed: the separation check waits for it.
     var saliency: [Float]?
     @ObservationIgnored var saliencyFailed = false
+    /// Vision's foreground mask of the photo, when it has a foreground; the separation check prefers it to the attention map.
+    var foregroundMask: [Float]?
+    /// The same mask at the sampling size, sharp enough to show over the photo.
+    @ObservationIgnored var foregroundDisplayMask: (values: [Float], width: Int, height: Int)?
+    var foregroundMaskChecked = false
+    @ObservationIgnored var foregroundMaskTask: Task<Void, Never>?
     /// How well the subject stands apart from the background, and the same after grading (graded version or preview).
     var separation: SeparationCheck?
     var afterSeparation: SeparationCheck?
     @ObservationIgnored var separationKey: Int?
+    /// True when `separation` was measured with the foreground mask.
+    var separationUsesForeground = false
     @ObservationIgnored var subjectFractionCache: (key: Int, fractions: [Double])?
 
     /// What the photo should feel like, written down before choosing a harmony. Saved in the session.
@@ -520,6 +541,10 @@ final class AnalysisModel {
                 viewport.fit()
                 saliency = nil
                 saliencyFailed = false
+                foregroundMask = nil
+                foregroundDisplayMask = nil
+                foregroundMaskChecked = false
+                foregroundOverlay = nil
                 separation = nil
                 afterSeparation = nil
                 separationKey = nil
@@ -531,6 +556,7 @@ final class AnalysisModel {
                 UserDefaults.standard.set(PaneTab.harmony.rawValue, forKey: PaneTab.storageKey)
                 NSDocumentController.shared.noteNewRecentDocumentURL(url)
                 if showSaliency { refreshSaliencyOverlay() }
+                if showForeground { refreshForegroundOverlay() }
                 if let session = savedSession(for: url) {
                     await restore(session, photo: url, graded: graded)
                     if let weightingOverride, weightingOverride != weighting {
