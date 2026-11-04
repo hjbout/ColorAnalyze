@@ -2155,6 +2155,33 @@ import Testing
         let check = WhiteBalanceCheck.check(Self.buffer(neutralPixels: 2))
         #expect(check.verdict == .unknown && check.direction == nil)
     }
+
+    @Test func greyNeedsNoChange() {
+        let correction = WhiteBalanceCorrection(castWhite: SIMD3(0.4, 0.4, 0.4))
+        #expect(abs(correction.miredShift) < 0.5 && abs(correction.tintShift) < 0.5)
+        let grey = correction.apply(SIMD3(0.3, 0.3, 0.3))
+        #expect(abs(grey.x - 0.3) < 0.001 && abs(grey.z - 0.3) < 0.001)
+        #expect(WhiteBalanceCheck.check(Self.buffer()).correction == nil)
+    }
+
+    @Test func warmCastGetsALowerTemperatureAndThePreviewNeutralizesIt() throws {
+        let buffer = Self.buffer(tint: SIMD3(0.15, 0.05, -0.10))
+        let correction = try #require(WhiteBalanceCheck.check(buffer).correction)
+        #expect(correction.miredShift > 10)
+        #expect(correction.temperature(from: 5500) < 5000)
+        let corrected = PixelBuffer(width: buffer.width, height: 1, linear: buffer.linear.map(correction.apply))
+        #expect(WhiteBalanceCheck.check(corrected).verdict == .neutral)
+    }
+
+    @Test func greenCastGetsTintTowardMagenta() throws {
+        let correction = try #require(WhiteBalanceCheck.check(Self.buffer(tint: SIMD3(-0.08, 0.10, -0.06))).correction)
+        #expect(correction.tintShift > 5)
+    }
+
+    @Test func coolCastGetsAHigherTemperature() throws {
+        let correction = try #require(WhiteBalanceCheck.check(Self.buffer(tint: SIMD3(-0.12, -0.02, 0.17))).correction)
+        #expect(correction.miredShift < -10 && correction.temperature(from: 5500) > 6000)
+    }
 }
 
 

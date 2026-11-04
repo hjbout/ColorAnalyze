@@ -35,7 +35,7 @@ struct PhotoMarkerView: View {
                         splitDivider(in: rect, visible: visible)
                     }
 
-                    ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
+                    ForEach(Array(model.gradingMarkers.enumerated()), id: \.element.id) { index, marker in
                         MarkerBadge(number: index + 1, color: model.displayColor(for: marker),
                                     diameter: zoomed ? 20 : 26, isSelected: marker.id == model.selectedMarkerID,
                                     isAccent: marker.isAccent)

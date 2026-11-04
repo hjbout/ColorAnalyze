@@ -212,6 +212,17 @@ final class AnalysisModel {
         }
     }
 
+    /// Applies the suggested white balance correction before the grading in the preview and in what is predicted after it,
+    /// as PhotoLab applies White Balance before Color Grading. Remembered.
+    var previewWhiteBalance = AnalysisModel.remembered("previewWhiteBalance") ?? true {
+        didSet {
+            if previewWhiteBalance != oldValue { remember(previewWhiteBalance, as: "previewWhiteBalance"); refreshPreview() }
+        }
+    }
+
+    /// The Temperature (Kelvin) PhotoLab shows for this photo now, when typed in; per photo, not saved.
+    var typedTemperature: Double?
+
     var previewLayout = (AnalysisModel.remembered("previewLayout") as String?).flatMap(PreviewLayout.init(rawValue:)) ?? .split {
         didSet { if previewLayout != oldValue { remember(previewLayout.rawValue, as: "previewLayout") } }
     }
@@ -547,6 +558,7 @@ final class AnalysisModel {
                     try ImageLoader.load(url: url)
                 }.value
                 image = loaded
+                typedTemperature = nil
                 noteRecent(url)
                 undoManager?.removeAllActions(withTarget: self)
                 afterImage = nil

@@ -35,6 +35,7 @@ extension AnalysisModel {
                 settings = option.tone.applied(to: settings)
                 settings.hslSaturation = option.saturation
             }
+            settings.whiteBalance = previewedWhiteBalance
             result = (settings, GradePreview.Plan(settings))
         }
         predictionCache = (key, result?.0, result?.1)
@@ -74,7 +75,8 @@ extension AnalysisModel {
     /// The color a marker gets from the suggestion, as the calibrated model predicts PhotoLab will render it.
     func predictedColor(for marker: Marker) -> SRGBColor? {
         guard showPreview, let plan = prediction()?.plan else { return nil }
-        let linear = marker.color.linear
+        // The plan includes the white balance, so it starts from the color as it is in the photo, not the corrected marker.
+        let linear = (markers.first { $0.id == marker.id } ?? marker).color.linear
         return SRGBColor(linear: plan.applyLinear(linear: linear, lab: ColorMath.linearToOKLab(linear))).clamped
     }
 

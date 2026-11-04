@@ -17,10 +17,34 @@ extension AnalysisModel {
         return check
     }
 
+    /// What would neutralize the cast, nil when there is none to correct.
+    var whiteBalanceCorrection: WhiteBalanceCorrection? { whiteBalance.correction }
+
+    /// The correction the preview applies: the suggested one while "Show in the preview" is on.
+    var previewedWhiteBalance: WhiteBalanceCorrection? { previewWhiteBalance && afterImage == nil ? whiteBalanceCorrection : nil }
+
+    /// The Temperature PhotoLab shows now: as typed in, else 5500 K. macOS reads another As Shot value from a RAW than
+    /// PhotoLab shows (4974 K against 5694 K on the test photo), so it is no use as a default.
+    var currentTemperature: Double {
+        get { typedTemperature ?? 5500 }
+        set { typedTemperature = min(50_000, max(2_000, newValue.rounded())) }
+    }
+
+    /// The markers as the grading sees them: with the white balance correction applied while it is shown in the preview,
+    /// because PhotoLab corrects the white balance before it grades, so the grading must aim the corrected colors.
+    var gradingMarkers: [Marker] {
+        guard let correction = previewedWhiteBalance else { return markers }
+        return markers.map { marker in
+            var corrected = marker
+            corrected.color = SRGBColor(linear: correction.apply(marker.color.linear)).clamped
+            return corrected
+        }
+    }
+
     // MARK: Harmony
 
     var harmonyInputs: [HarmonyInput] {
-        markers.map {
+        gradingMarkers.map {
             HarmonyInput(hue: $0.color.hsb.h, weight: DxOMapping.harmonyWeight(color: $0.color, share: $0.share))
         }
     }

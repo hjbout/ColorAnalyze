@@ -210,6 +210,9 @@ public struct ColorExport: Codable, Sendable, Equatable {
         public var neutralSharePercent: Double
         public var direction: String?
         public var advice: String?
+        /// The correction: Temperature change in mired (+ = a lower Kelvin value) and Tint change (+ = toward magenta).
+        public var temperatureShiftMired: Double?
+        public var tintShift: Double?
 
         public init(_ check: WhiteBalanceCheck) {
             verdict = check.verdict.rawValue
@@ -217,6 +220,10 @@ public struct ColorExport: Codable, Sendable, Equatable {
             neutralSharePercent = (check.neutralShare * 1000).rounded() / 10
             direction = check.direction
             advice = check.advice
+            if let correction = check.correction {
+                temperatureShiftMired = (correction.miredShift * 10).rounded() / 10
+                tintShift = (correction.tintShift * 10).rounded() / 10
+            }
         }
     }
 

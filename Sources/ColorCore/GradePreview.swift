@@ -41,6 +41,9 @@ public struct GradePreviewSettings: Sendable, Equatable {
     /// 1 = as suggested; more exaggerates the tints, to make a small suggestion visible. Hue turns are always
     /// as suggested: they are large enough to see, and four times a turn of 30° is no preview of anything.
     public var amount = 1.0
+    /// A white balance correction applied before everything else, as PhotoLab applies White Balance before Color Grading.
+    /// Not scaled by `amount`.
+    public var whiteBalance: WhiteBalanceCorrection?
 
     public init(shadows: Tint = Tint(), midtones: Tint = Tint(), highlights: Tint = Tint(),
                 hueShifts: [DxOChannel: Double] = [:], amount: Double = 1,
@@ -73,7 +76,7 @@ public struct GradePreviewSettings: Sendable, Equatable {
 
     /// True when applying the settings would change nothing.
     public var isIdentity: Bool {
-        [shadows, midtones, highlights, master].allSatisfy { $0.isNeutral } && !hasTone
+        whiteBalance == nil && [shadows, midtones, highlights, master].allSatisfy { $0.isNeutral } && !hasTone
             && hueShifts.values.allSatisfy { abs($0) < 0.01 }
             && hslSaturation.values.allSatisfy { abs($0) < 0.01 }
             && hslLuminance.values.allSatisfy { abs($0) < 0.01 }
@@ -109,6 +112,7 @@ public enum GradePreview {
         /// HSL Saturation and Luminance per whole degree of PhotoLab hue, as fractions (empty without them).
         let saturationScales: [Float]
         let luminanceScales: [Float]
+        let whiteBalance: WhiteBalanceCorrection?
 
         static let gridSize = 1024
         // Shared by all plans: building them per plan would make a plan too expensive for an optimizer that tries thousands.
@@ -125,6 +129,7 @@ public enum GradePreview {
         static let negativeLuminanceGain: Float = 0.93
 
         public init(_ settings: GradePreviewSettings) {
+            whiteBalance = settings.whiteBalance
             let wheels = [settings.shadows, settings.midtones, settings.highlights, settings.master]
             func vector(_ tint: GradePreviewSettings.Tint) -> SIMD3<Float> {
                 guard tint.saturation != 0 else { return .zero }
@@ -260,13 +265,17 @@ public enum GradePreview {
 
         /// The graded OKLab color of a pixel given as OKLab.
         public func apply(_ lab: SIMD3<Float>) -> SIMD3<Float> {
-            guard hasWheels || hasHueShift || hasHSLScale || !toneGrid.isEmpty || !contrastGrid.isEmpty else { return lab }
+            guard whiteBalance != nil || hasWheels || hasHueShift || hasHSLScale || !toneGrid.isEmpty || !contrastGrid.isEmpty else { return lab }
             return ColorMath.linearToOKLab(applyLinear(linear: ColorMath.okLabToLinear(lab), lab: lab))
         }
 
         /// The graded color of a pixel, as linear sRGB; `linear` and `lab` are the same color.
-        public func applyLinear(linear input: SIMD3<Float>, lab: SIMD3<Float>) -> SIMD3<Float> {
-            var linear = input
+        public func applyLinear(linear input: SIMD3<Float>, lab inputLab: SIMD3<Float>) -> SIMD3<Float> {
+            var linear = input, lab = inputLab
+            if let whiteBalance {
+                linear = whiteBalance.apply(linear)
+                lab = ColorMath.linearToOKLab(linear)
+            }
             if !toneGrid.isEmpty { linear = toned(linear) }
             if !contrastGrid.isEmpty { linear = contrasted(linear) }
             if hasHueShift { linear = turnedHue(linear: linear, lab: lab) }
