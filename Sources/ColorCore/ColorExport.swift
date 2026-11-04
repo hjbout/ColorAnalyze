@@ -147,6 +147,31 @@ public struct ColorExport: Codable, Sendable, Equatable {
     public var whiteBalance: WhiteBalance?
     /// How well the subject stands apart from the background; nil when there is no subject map.
     public var separation: Separation?
+    /// Itten's contrasts of the photo, by name (`lightDark`, `warmCool`, …).
+    public var contrasts: [String: Contrast]?
+    /// What was chosen for the intention's contrasts, when the grading is steered toward them.
+    public var steering: Steering?
+
+    public struct Steering: Codable, Sendable, Equatable {
+        public var style: String
+        /// HSL Saturation per channel.
+        public var hslSaturation: [String: Int]
+        /// Light palette sliders added for the intention (blacks, shadows, highlights, whites, contrast), those not at 0.
+        public var lightPalette: [String: Int]
+        /// Strengths of the asked contrasts (0–100) in the photo and as predicted with the steering.
+        public var before: [String: Int]
+        public var after: [String: Int]
+
+        public init(_ result: ContrastSteering.Result) {
+            style = result.option.style.rawValue
+            hslSaturation = Dictionary(uniqueKeysWithValues: result.option.saturation.map { ($0.key.rawValue, Int($0.value.rounded())) })
+            let tone = result.option.tone
+            lightPalette = [("blacks", tone.blacks), ("shadows", tone.shadows), ("highlights", tone.highlights), ("whites", tone.whites),
+                            ("contrast", tone.contrast)].filter { $0.1 != 0 }.reduce(into: [:]) { $0[$1.0] = Int($1.1.rounded()) }
+            before = Dictionary(uniqueKeysWithValues: result.before.map { ($0.key.rawValue, Int(($0.value * 100).rounded())) })
+            after = Dictionary(uniqueKeysWithValues: result.after.map { ($0.key.rawValue, Int(($0.value * 100).rounded())) })
+        }
+    }
     public var colors: [ColorRecord]
 
     public struct WhiteBalance: Codable, Sendable, Equatable {
@@ -202,9 +227,35 @@ public struct ColorExport: Codable, Sendable, Equatable {
         }
     }
 
+    public struct Contrast: Codable, Sendable, Equatable {
+        /// 0 (absent) to 100 (as strong as it gets in photographs).
+        public var strength: Int
+        public var reading: String
+        /// The strength of the graded version.
+        public var after: Int?
+        /// What the intention asks of this contrast ("high", "low") and how the photo stands toward it ("met", "partly",
+        /// "opposite"); nil when the intention says nothing about it.
+        public var aim: String?
+        public var aimStatus: String?
+
+        /// One entry per contrast of `profile`, with the graded version's strengths and the intention's aims when given.
+        public static func entries(_ profile: ContrastProfile, after: ContrastProfile? = nil,
+                                   aims: [ContrastProfile.Kind: Intention.ContrastAim] = [:]) -> [String: Contrast] {
+            Dictionary(uniqueKeysWithValues: ContrastProfile.Kind.allCases.map { kind in
+                let strength = profile.strength(kind)
+                let aim = aims[kind]
+                return (kind.rawValue, Contrast(strength: Int((strength * 100).rounded()), reading: profile.reading(kind),
+                                                after: after.map { Int(($0.strength(kind) * 100).rounded()) },
+                                                aim: aim?.rawValue,
+                                                aimStatus: aim.map { ContrastProfile.status(of: (after ?? profile).strength(kind), toward: $0).rawValue }))
+            })
+        }
+    }
+
     public init(photo: String, graded: String? = nil, exportedAt: Date = Date(), weighting: String? = nil,
                 intention: String? = nil, harmony: Harmony? = nil, whiteBalance: WhiteBalance? = nil,
-                separation: Separation? = nil, colors: [ColorRecord]) {
+                separation: Separation? = nil, contrasts: [String: Contrast]? = nil, steering: Steering? = nil,
+                colors: [ColorRecord]) {
         self.photo = photo
         self.graded = graded
         self.exportedAt = exportedAt
@@ -213,6 +264,8 @@ public struct ColorExport: Codable, Sendable, Equatable {
         self.harmony = harmony
         self.whiteBalance = whiteBalance
         self.separation = separation
+        self.contrasts = contrasts
+        self.steering = steering
         self.colors = colors
     }
 

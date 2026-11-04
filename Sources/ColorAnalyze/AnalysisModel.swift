@@ -391,6 +391,17 @@ final class AnalysisModel {
     var separation: SeparationCheck?
     var afterSeparation: SeparationCheck?
     @ObservationIgnored var separationKey: Int?
+    /// Itten's contrasts of the photo, and the same after grading (graded version or preview).
+    var contrastProfile: ContrastProfile?
+    /// Lets the grading follow the contrasts the intention asks for (style, HSL Saturation). Remembered.
+    var steerByIntention = AnalysisModel.remembered("steerByIntention") ?? false {
+        didSet { if steerByIntention != oldValue { remember(steerByIntention, as: "steerByIntention") } }
+    }
+    /// The option chosen for the intention, and what it was chosen for.
+    var steering: ContrastSteering.Result?
+    @ObservationIgnored var steeringKey: Int?
+    var afterContrastProfile: ContrastProfile?
+    @ObservationIgnored var contrastKey: Int?
     /// True when `separation` was measured with the foreground mask.
     var separationUsesForeground = false
     @ObservationIgnored var subjectFractionCache: (key: Int, fractions: [Double])?
@@ -547,6 +558,11 @@ final class AnalysisModel {
                 foregroundOverlay = nil
                 separation = nil
                 afterSeparation = nil
+                contrastProfile = nil
+                afterContrastProfile = nil
+                steering = nil
+                steeringKey = nil
+                contrastKey = nil
                 separationKey = nil
                 saliencyOverlay = nil
                 setWeights(nil)

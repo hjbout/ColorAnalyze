@@ -41,3 +41,15 @@ echo "T Shadows +100             : $($T score $B $H/T-shadows-100.csv --tone-sha
 echo "T Shadows -100             : $($T score $B $H/T-shadows-m100.csv --tone-shadows -100)"
 echo "T Shadows +50              : $($T score $B $H/T-shadows-50.csv --tone-shadows 50)"
 echo "T Shadows +40 + Blacks +60 : $($T score $B $H/T-combo-s40-b60.csv --tone-shadows 40 --tone-blacks 60)"
+echo "T Blacks -50               : $($T score $B $H/T-blacks-m50.csv --tone-blacks -50)"
+echo "T Shadows -50              : $($T score $B $H/T-shadows-m50.csv --tone-shadows -50)"
+for v in 100 50 m100; do a=${v/m/-}
+  echo "T Midtones $a              : $($T score $B $H/T-midtones-$v.csv --tone-midtones $a)"
+  echo "T Highlights $a            : $($T score $B $H/T-highlights-$v.csv --tone-highlights $a)"
+  echo "T Whites $a                : $($T score $B $H/T-whites-$v.csv --tone-whites $a)"
+done
+for v in 50 100 m50; do a=${v/m/-}
+  echo "K Contrast $a              : $($T score $B $H/K-contrast-$v.csv --contrast $a)"
+done
+echo "T S-curve (hold-out)       : $($T score $B $H/T-scurve.csv --tone-blacks -40 --tone-shadows -20 --tone-highlights 30 --tone-whites 20)"
+echo "T S-curve + Color Grading  : $($T score $B $H/T-scurve-color.csv --tone-blacks -40 --tone-shadows -20 --tone-highlights 30 --tone-whites 20 --highlights 36,40 --shadows 231,40)"

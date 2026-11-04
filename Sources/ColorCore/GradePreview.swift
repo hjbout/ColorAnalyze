@@ -25,9 +25,14 @@ public struct GradePreviewSettings: Sendable, Equatable {
     public var master = Tint()
     /// Color Grading Balance (-100...100): positive lets the highlights reach further into the darks.
     public var balance = 0.0
-    /// Selective Tone of PhotoLab's Light palette (-100...100): Blacks and Shadows.
+    /// Selective Tone of PhotoLab's Light palette (-100...100): Blacks, Shadows, Midtones, Highlights and Whites.
     public var toneBlacks = 0.0
     public var toneShadows = 0.0
+    public var toneMidtones = 0.0
+    public var toneHighlights = 0.0
+    public var toneWhites = 0.0
+    /// Contrast of the Light palette (-100...100).
+    public var contrast = 0.0
     /// HSL tool: turn of the Hue handle per channel, degrees on PhotoLab's ring (+ = counter-clockwise).
     public var hueShifts: [DxOChannel: Double] = [:]
     /// HSL tool: Saturation and Luminance per channel (-100...100).
@@ -41,9 +46,14 @@ public struct GradePreviewSettings: Sendable, Equatable {
                 hueShifts: [DxOChannel: Double] = [:], amount: Double = 1,
                 master: Tint = Tint(), balance: Double = 0,
                 hslSaturation: [DxOChannel: Double] = [:], hslLuminance: [DxOChannel: Double] = [:],
-                toneBlacks: Double = 0, toneShadows: Double = 0) {
+                toneBlacks: Double = 0, toneShadows: Double = 0, toneMidtones: Double = 0, toneHighlights: Double = 0,
+                toneWhites: Double = 0, contrast: Double = 0) {
         self.toneBlacks = toneBlacks
         self.toneShadows = toneShadows
+        self.toneMidtones = toneMidtones
+        self.toneHighlights = toneHighlights
+        self.toneWhites = toneWhites
+        self.contrast = contrast
         self.shadows = shadows
         self.midtones = midtones
         self.highlights = highlights
@@ -55,9 +65,15 @@ public struct GradePreviewSettings: Sendable, Equatable {
         self.hslLuminance = hslLuminance
     }
 
+    /// The five Selective Tone sliders, darkest first.
+    public var toneSliders: [Double] { [toneBlacks, toneShadows, toneMidtones, toneHighlights, toneWhites] }
+
+    /// True when a slider of the Light palette is moved.
+    public var hasTone: Bool { toneSliders.contains { $0 != 0 } || contrast != 0 }
+
     /// True when applying the settings would change nothing.
     public var isIdentity: Bool {
-        [shadows, midtones, highlights, master].allSatisfy { $0.isNeutral } && toneBlacks == 0 && toneShadows == 0
+        [shadows, midtones, highlights, master].allSatisfy { $0.isNeutral } && !hasTone
             && hueShifts.values.allSatisfy { abs($0) < 0.01 }
             && hslSaturation.values.allSatisfy { abs($0) < 0.01 }
             && hslLuminance.values.allSatisfy { abs($0) < 0.01 }
@@ -80,6 +96,8 @@ public enum GradePreview {
         let masterGrids: [[Float]]
         /// Selective Tone: the new mean value of a pixel as a function of its mean value (fine grid), empty without tone changes.
         let toneGrid: [Float]
+        /// Contrast: the new value of each channel as a function of its value (fine grid), empty without Contrast.
+        let contrastGrid: [Float]
         let hasWheels: Bool
         let hasHueShift: Bool
         let hasHSLScale: Bool
@@ -126,11 +144,9 @@ public enum GradePreview {
                 let l = Float(tint.luminance / 100 * settings.amount)
                 return l < 0 ? l * Self.negativeLuminanceGain : l
             }
-            if settings.toneBlacks != 0 || settings.toneShadows != 0 {
-                toneGrid = Self.toneGrid(blacks: Float(settings.toneBlacks / 100), shadows: Float(settings.toneShadows / 100))
-            } else {
-                toneGrid = []
-            }
+            toneGrid = settings.toneSliders.contains { $0 != 0 } ? Self.toneGrid(settings.toneSliders.map { Float($0 / 100) }) : []
+            contrastGrid = settings.contrast != 0
+                ? Self.sampledGrid([(Float(settings.contrast / 100), GradePreview.contrastSamples)]) : []
             hasWheels = tintVectors.contains { $0 != .zero } || luminances.contains { $0 != 0 } || !masterGrids.isEmpty
             if settings.balance == 0 {
                 tintGrids = Self.curveGrid
@@ -153,29 +169,58 @@ public enum GradePreview {
         }
 
         /// Selective Tone of the Light palette: the three channels are scaled by the gain of their mean (a colored pixel keeps its
-        /// hue and chroma, as measured).
+        /// hue and chroma, as measured). A lift stops at white: a channel is not pushed past 1 (or past its own value above 1).
         private func toned(_ linear: SIMD3<Float>) -> SIMD3<Float> {
             let mean = (linear.x + linear.y + linear.z) / 3
             guard mean > 1e-7 else { return linear }
-            let position = min(1, max(0, mean)) * Float(Self.gridSize)
-            let i = min(Self.gridSize - 1, Int(position)), t = position - Float(i)
-            let out = toneGrid[i] * (1 - t) + toneGrid[i + 1] * t
-            return linear * (out / mean)
+            let gain = curve(toneGrid, mean) / mean
+            guard gain > 1 else { return linear * gain }
+            let lifted = linear * gain
+            return SIMD3(min(lifted.x, max(1, linear.x)), min(lifted.y, max(1, linear.y)), min(lifted.z, max(1, linear.z)))
         }
 
-        /// New value of a grey as a function of its value, from the measured +100 and -100 curves of Blacks and Shadows
-        /// (amounts -1...1), on the fine grid.
-        static func toneGrid(blacks: Float, shadows: Float) -> [Float] {
+        /// Contrast of the Light palette: each channel follows the measured curve (values outside 0...1, from a wide-gamut
+        /// photo, are left as they are: the curve ends at 0 and 1).
+        private func contrasted(_ linear: SIMD3<Float>) -> SIMD3<Float> {
+            func c(_ v: Float) -> Float { v < 0 || v > 1 ? v : curve(contrastGrid, v) }
+            return SIMD3(c(linear.x), c(linear.y), c(linear.z))
+        }
+
+        /// New value of a grey as a function of its value, from the measured curves of the five Selective Tone sliders
+        /// (amounts -1...1, Blacks first), on the fine grid. The sliders act one after another rather than adding up: composed
+        /// in the order Shadows, Blacks, Midtones, Whites, Highlights they predict the measured S-curve best (grey error 1.6
+        /// against an effect of 8.0; adding up gives 2.2).
+        static func toneGrid(_ amounts: [Float]) -> [Float] {
+            var result = (0...gridSize).map { Float($0) / Float(gridSize) }
+            for slider in [1, 0, 2, 4, 3] where amounts[slider] != 0 {
+                let step = sampledGrid([(amounts[slider], GradePreview.toneSamples[slider])])
+                result = result.map { x in
+                    let position = min(1, max(0, x)) * Float(gridSize)
+                    let i = min(gridSize - 1, Int(position)), t = position - Float(i)
+                    return step[i] * (1 - t) + step[i + 1] * t
+                }
+            }
+            return result
+        }
+
+        /// The grey ramp plus the sum of each slider's change at its amount, on the fine grid. A slider's change is interpolated
+        /// linearly between its measured amounts (and 0, which changes nothing); beyond the outermost one it is scaled.
+        static func sampledGrid(_ sliders: [(amount: Float, samples: [(amount: Float, delta: [Float])])]) -> [Float] {
             let nodes = GradePreview.toneNodes
-            func delta(_ amount: Float, plus: [Float], minus: [Float], _ x: Float) -> Float {
-                guard amount != 0 else { return 0 }
-                let table = amount > 0 ? plus : minus
-                return abs(amount) * GradePreview.interpolate(x, nodes: nodes, values: table)
+            let deltas: [[Float]] = sliders.compactMap { amount, samples in
+                guard amount != 0 else { return nil }
+                let points = (samples + [(0, [Float](repeating: 0, count: nodes.count))]).sorted { $0.amount < $1.amount }
+                if let upper = points.firstIndex(where: { $0.amount >= amount }), upper > 0 {
+                    let a = points[upper - 1], b = points[upper]
+                    let t = (amount - a.amount) / (b.amount - a.amount)
+                    return zip(a.delta, b.delta).map { $0 * (1 - t) + $1 * t }
+                }
+                let edge = amount < 0 ? points.first! : points.last!
+                return edge.delta.map { $0 * amount / edge.amount }
             }
             return (0...gridSize).map { index in
                 let x = Float(index) / Float(gridSize)
-                return max(0, x + delta(blacks, plus: GradePreview.blacksPlus, minus: GradePreview.blacksMinus, x)
-                              + delta(shadows, plus: GradePreview.shadowsPlus, minus: GradePreview.shadowsMinus, x))
+                return max(0, deltas.reduce(x) { $0 + GradePreview.interpolate(x, nodes: nodes, values: $1) })
             }
         }
 
@@ -215,7 +260,7 @@ public enum GradePreview {
 
         /// The graded OKLab color of a pixel given as OKLab.
         public func apply(_ lab: SIMD3<Float>) -> SIMD3<Float> {
-            guard hasWheels || hasHueShift || hasHSLScale || !toneGrid.isEmpty else { return lab }
+            guard hasWheels || hasHueShift || hasHSLScale || !toneGrid.isEmpty || !contrastGrid.isEmpty else { return lab }
             return ColorMath.linearToOKLab(applyLinear(linear: ColorMath.okLabToLinear(lab), lab: lab))
         }
 
@@ -223,6 +268,7 @@ public enum GradePreview {
         public func applyLinear(linear input: SIMD3<Float>, lab: SIMD3<Float>) -> SIMD3<Float> {
             var linear = input
             if !toneGrid.isEmpty { linear = toned(linear) }
+            if !contrastGrid.isEmpty { linear = contrasted(linear) }
             if hasHueShift { linear = turnedHue(linear: linear, lab: lab) }
             if hasHSLScale { linear = scaled(linear: linear, lab: lab) }
             if hasWheels {

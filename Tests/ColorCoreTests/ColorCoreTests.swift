@@ -2506,3 +2506,174 @@ import Testing
         #expect(SeparationCheck.separatedHue(of: sky, fromSubjectAngle: subjectAngle) == sky.hsb.h)
     }
 }
+
+@Suite struct ContrastProfileTests {
+    private func pixels(_ parts: [(SRGBColor, Int)]) -> [SIMD3<Float>] {
+        parts.flatMap { [SIMD3<Float>](repeating: $0.0.oklab, count: $0.1) }
+    }
+
+    @Test func aFlatGreyPhotoHasNoContrast() {
+        let profile = ContrastProfile(lab: pixels([(SRGBColor(r: 0.5, g: 0.5, b: 0.5), 1000)]))
+        for kind in ContrastProfile.Kind.allCases { #expect(profile.strength(kind) == 0) }
+        #expect(profile.warmShare == nil)
+        #expect(profile.reading(.hue) == "hardly any color")
+    }
+
+    @Test func orangeAgainstBlueIsWarmCoolAndComplementary() {
+        let profile = ContrastProfile(lab: pixels([(SRGBColor(r: 0.85, g: 0.5, b: 0.2), 500), (SRGBColor(r: 0.2, g: 0.35, b: 0.75), 500)]))
+        #expect(profile.strength(.warmCool) > 0.8)
+        #expect(profile.strength(.complementary) > 0.7)
+        #expect(profile.strength(.hue) > 0.5)
+        #expect(profile.reading(.complementary).contains("against"))
+    }
+
+    @Test func oneHueFamilyHasNoHueContrast() {
+        let profile = ContrastProfile(lab: pixels([(SRGBColor(r: 0.3, g: 0.55, b: 0.25), 600), (SRGBColor(r: 0.2, g: 0.4, b: 0.15), 400)]))
+        #expect(profile.strength(.hue) < 0.1)
+        #expect(profile.strength(.complementary) == 0)
+        #expect(profile.warmShare.map { $0 < 0.5 } == true)
+    }
+
+    @Test func blackAgainstWhiteIsFullLightDark() {
+        let profile = ContrastProfile(lab: pixels([(SRGBColor(r: 0.02, g: 0.02, b: 0.02), 500), (SRGBColor(r: 0.98, g: 0.98, b: 0.98), 500)]))
+        #expect(profile.strength(.lightDark) == 1)
+    }
+
+    @Test func aSmallVividPatchIsAnExtensionContrast() {
+        let profile = ContrastProfile(lab: pixels([(SRGBColor(r: 0.45, g: 0.5, b: 0.55), 950), (SRGBColor(r: 0.9, g: 0.15, b: 0.1), 50)]))
+        #expect(profile.strength(.extension) > 0.8)
+        #expect(profile.accent.map { ContrastProfile.familyName($0.family) } == "red")
+        #expect(profile.strength(.saturation) > 0)
+    }
+
+    @Test func theExportCarriesEveryContrast() {
+        let profile = ContrastProfile(lab: pixels([(SRGBColor(r: 0.85, g: 0.5, b: 0.2), 10)]))
+        let entries = ColorExport.Contrast.entries(profile, after: profile)
+        #expect(Set(entries.keys) == Set(ContrastProfile.Kind.allCases.map(\.rawValue)))
+        #expect(entries["warmCool"]?.after == entries["warmCool"]?.strength)
+    }
+}
+
+@Suite struct IntentionContrastTests {
+    @Test func dutchAndEnglishMoodsAskForContrasts() {
+        let calm = Intention.contrastAims(for: "Rustige, zachte avond")
+        #expect(calm[.hue]?.aim == .low)
+        #expect(calm[.lightDark]?.aim == .low)
+        #expect(calm[.saturation]?.words == ["rustige", "zachte"])
+        let dramatic = Intention.contrastAims(for: "dramatic, bold")
+        #expect(dramatic[.lightDark]?.aim == .high)
+        #expect(dramatic[.extension]?.aim == .high)
+        #expect(dramatic[.warmCool] == nil)
+    }
+
+    @Test func wordsThatDisagreeLeaveAContrastOut() {
+        // Calm wants light–dark low, dramatic high: the note does not decide. Both want few hues.
+        let aims = Intention.contrastAims(for: "calm but dramatic")
+        #expect(aims[.lightDark] == nil)
+        #expect(aims[.hue]?.aim == .low)
+    }
+
+    @Test func temperatureWordsAreLeftToTheStyle() {
+        #expect(Intention.contrastAims(for: "warm, koel").isEmpty)
+    }
+
+    @Test func aStrengthIsJudgedAgainstTheAim() {
+        #expect(ContrastProfile.status(of: 0.7, toward: .high) == .met)
+        #expect(ContrastProfile.status(of: 0.5, toward: .high) == .partly)
+        #expect(ContrastProfile.status(of: 0.7, toward: .low) == .opposite)
+        #expect(ContrastProfile.progress(from: 0.5, to: 0.4, toward: .low) == 1)
+        #expect(ContrastProfile.progress(from: 0.5, to: 0.51, toward: .high) == 0)
+        #expect(ContrastProfile.progress(from: 0.5, to: 0.6, toward: .low) == -1)
+    }
+
+    @Test func theExportCarriesTheAims() {
+        let profile = ContrastProfile(lab: [SIMD3<Float>](repeating: SRGBColor(r: 0.5, g: 0.5, b: 0.5).oklab, count: 10))
+        let entries = ColorExport.Contrast.entries(profile, aims: [.lightDark: .low])
+        #expect(entries["lightDark"]?.aim == "low")
+        #expect(entries["lightDark"]?.aimStatus == "met")
+        #expect(entries["hue"]?.aim == nil)
+    }
+}
+
+@Suite struct ContrastSteeringTests {
+    private func pixels(_ parts: [(SRGBColor, Int)]) -> [SIMD3<Float>] {
+        parts.flatMap { [SIMD3<Float>](repeating: $0.0.oklab, count: $0.1) }
+    }
+
+    @Test func saturationPlansFollowTheAimsAndSpareProtectedChannels() {
+        let plans = ContrastSteering.saturationPlans(aims: [.saturation: .low], channels: [.blue, .orange, .neutral],
+                                                     protected: [.orange], accent: nil)
+        #expect(plans.count == 4)
+        #expect(plans[0].isEmpty)
+        #expect(plans[2] == [.blue: -20])
+        let accentPlans = ContrastSteering.saturationPlans(aims: [.extension: .high], channels: [.blue, .cyan, .red],
+                                                         protected: [], accent: .red)
+        #expect(accentPlans[1] == [.blue: -10, .cyan: -10])
+        #expect(ContrastSteering.saturationPlans(aims: [.hue: .low], channels: [.blue], protected: [], accent: nil) == [[:]])
+    }
+
+    @Test func aCalmIntentionMutesAVividPhoto() {
+        let lab = pixels([(SRGBColor(r: 0.9, g: 0.45, b: 0.1), 300), (SRGBColor(r: 0.1, g: 0.35, b: 0.8), 300)])
+        let candidates = [ContrastSteering.Candidate(style: .neutral, settings: GradePreviewSettings(), hueFitAfter: 0)]
+        let aims: [ContrastProfile.Kind: Intention.ContrastAim] = [.saturation: .low]
+        let result = ContrastSteering.choose(candidates: candidates, lab: lab, aims: aims,
+                                             saturationPlans: ContrastSteering.saturationPlans(aims: aims, channels: [.orange, .blue],
+                                                                                               protected: [], accent: nil))
+        #expect(result?.option.saturation.isEmpty == false)
+        #expect(result?.option.saturation.values.allSatisfy { $0 < 0 } == true)
+        #expect((result?.after[.saturation] ?? 1) < (result?.before[.saturation] ?? 0))
+    }
+
+    @Test func nothingChangesWhenTheAimIsMetAlready() {
+        let lab = pixels([(SRGBColor(r: 0.5, g: 0.5, b: 0.5), 600)])
+        let candidates = [ContrastSteering.Candidate(style: .neutral, settings: GradePreviewSettings(), hueFitAfter: 0),
+                          ContrastSteering.Candidate(style: .faded, settings: GradePreviewSettings(toneBlacks: 30), hueFitAfter: 0)]
+        let result = ContrastSteering.choose(candidates: candidates, lab: lab, aims: [.lightDark: .low],
+                                             saturationPlans: [[:]])
+        #expect(result?.option == ContrastSteering.Option(style: .neutral))
+    }
+}
+
+@Suite struct LightPaletteTests {
+    private func grey(_ v: Double) -> SIMD3<Float> { SRGBColor(r: v, g: v, b: v).oklab }
+
+    @Test func theSCurveStretchesTheTonalRange() {
+        let plan = GradePreview.Plan(GradePreviewSettings(toneBlacks: -40, toneShadows: -20, toneHighlights: 30, toneWhites: 20))
+        #expect(plan.apply(grey(0.15)).x < grey(0.15).x - 0.05)
+        #expect(plan.apply(grey(0.8)).x > grey(0.8).x + 0.02)
+        #expect(abs(plan.apply(grey(1)).x - 1) < 0.01)
+    }
+
+    @Test func highlightsAndWhitesLiftTheLightsNotTheDarks() {
+        let plan = GradePreview.Plan(GradePreviewSettings(toneHighlights: 100))
+        #expect(plan.apply(grey(0.7)).x > grey(0.7).x + 0.1)
+        #expect(abs(plan.apply(grey(0.08)).x - grey(0.08).x) < 0.02)
+    }
+
+    @Test func contrastIsAnSAroundMiddleGrey() {
+        let up = GradePreview.Plan(GradePreviewSettings(contrast: 100)), down = GradePreview.Plan(GradePreviewSettings(contrast: -50))
+        #expect(up.apply(grey(0.2)).x < grey(0.2).x)
+        #expect(up.apply(grey(0.85)).x > grey(0.85).x)
+        #expect(down.apply(grey(0.2)).x > grey(0.2).x)
+        #expect(GradePreviewSettings(contrast: 10).hasTone)
+    }
+
+    @Test func amountsBetweenMeasurementsAreInterpolated() {
+        let half = GradePreview.Plan(GradePreviewSettings(toneMidtones: 50)), quarter = GradePreview.Plan(GradePreviewSettings(toneMidtones: 25))
+        let g = grey(0.45)
+        let a = half.apply(g).x - g.x, b = quarter.apply(g).x - g.x
+        #expect(a > 0.03)
+        #expect(abs(b - a / 2) < 0.01)
+    }
+
+    @Test func steeringReachesForAnSCurveForAStrongLightDark() {
+        let lab = [SIMD3<Float>](repeating: grey(0.18), count: 300) + [SIMD3<Float>](repeating: grey(0.55), count: 300)
+        let candidates = [ContrastSteering.Candidate(style: .neutral, settings: GradePreviewSettings(), hueFitAfter: 0)]
+        let aims: [ContrastProfile.Kind: Intention.ContrastAim] = [.lightDark: .high]
+        let result = ContrastSteering.choose(candidates: candidates, lab: lab, aims: aims, saturationPlans: [[:]],
+                                             tonePlans: ContrastSteering.tonePlans(aims: aims))
+        #expect(result?.option.tone.isNeutral == false)
+        #expect((result?.after[.lightDark] ?? 0) > (result?.before[.lightDark] ?? 1) + 0.1)
+        #expect(ContrastSteering.tonePlans(aims: [.hue: .low]) == [ContrastSteering.Tone()])
+    }
+}

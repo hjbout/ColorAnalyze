@@ -4,7 +4,7 @@ Van foto naar een startpunt voor color grading in DxO PhotoLab, met de meegeleve
 
 ## 1. Open de foto en schrijf je intentie op
 
-Start de app (`build/ColorAnalyze.app`, zie de README) en open de foto met **⌘O** of sleep hem in het venster. Vul meteen het veld **Intention** in, vóór je naar de kleuren kijkt: *Rustige, warme avond*. De harmonie die je straks kiest moet dát gevoel dienen, niet andersom.
+Start de app (`build/ColorAnalyze.app`, zie de README) en open de foto met **⌘O** of sleep hem in het venster. Vul meteen in de tab **Grading** het veld **Intention** in, vóór je naar de kleuren kijkt: *Rustige, warme avond*. De harmonie die je straks kiest moet dát gevoel dienen, niet andersom. Woorden als *rustig*, *dramatisch* of *kleurrijk* vertaalt de app ook naar de contrasten die de foto moeten dragen (stap 4b).
 
 ![Na het openen](img/stap1-start.png)
 
@@ -42,6 +42,69 @@ Zoom daarna terug (⌘0), verwijder de dubbele blauwen en zet een marker op de z
 - **Ander kleurwiel**: het keuzemenu onder de helderheidsbalk (RGB, RYB, DxO, OKLCH, CIELAB, Munsell, Itten) verandert op welk wiel de harmonie wordt berekend en getekend; de kleuren zelf veranderen niet.
 - **Referentiefoto**: wil je de kleuren van een andere foto als doel? Open die met **⌥⌘R** (*Compare ▸ Open Reference Photo…*). Onder *Reference fit* in de Harmony-tab zie je zijn palet; klik een staal om een kleur van jouw foto aan die referentiekleur te koppelen.
 - Het DxO-kanaal en de hue-waarden zijn benaderingen op DxO's eigen kleuras. Controleer ze in PhotoLab.
+
+## 4b. Lees de contrasten
+
+De harmonie zegt alleen hoe de tinten op het wiel geordend zijn. Hoe een foto aanvoelt, hangt minstens zo veel af van zijn **contrasten**. Onder de harmonie toont de Harmony-tab het blok **Contrasts**: de contrasten van Johannes Itten, gemeten op alle pixels, elk als balk van 0 tot 100.
+
+Lees het als een **karakterschets, niet als een score**. Hoog is niet beter dan laag. De vraag is of het karakter past bij je intentie.
+
+**Werkwijze**
+
+1. **Intentie → contrasten.** Bepaal welke één of twee contrasten de foto moeten dragen. Schrijf je in *Intention* een stemmingswoord, dan doet de app dat voor je. Bij die contrasten verschijnt een pijl (**↑** hoog of **↓** laag gewenst): groen als het al zo is, oranje halverwege, rood als het de andere kant op staat. Dezelfde pijlen staan in één regel onder *Intention* in de Grading-tab.
+2. **Lees het karakter.** De één of twee hoogste balken zijn waar de foto nu zijn kracht uit haalt. Vuistregel: één of twee sterke contrasten werken het best. Staat alles hoog, dan wordt de foto onrustig. Staat alles laag, dan wordt hij vlak, tenzij dat de bedoeling is, zoals bij mist.
+3. **Stuur bij** met de tool die bij dat contrast hoort (tabel hieronder). Versterk wat je wilt en demp wat ermee concurreert.
+4. **Controleer met de preview aan.** Elke rij toont dan *nu → voorspeld* en een streepje op de balk. Een groen getal gaat de kant van je intentie op, een rood getal de verkeerde kant. Let ook op bijwerkingen: *Warm overall* verlaagt Warm–cool en Complementary, omdat alles warm wordt.
+
+**Per contrast**
+
+| Contrast | Wat het zegt | Hoger | Lager |
+|---|---|---|---|
+| **Light–dark** | grafisch en dramatisch tegenover zacht en mistig | PhotoLab: Contrast, Tone Curve, ClearView, Selective Tone | stijl *Faded*, Blacks/Shadows omhoog |
+| **Warm–cool** | spanning tussen warm licht en koele schaduw | stijl *Warm highlights, cool shadows* of *Teal & orange* | *Warm overall* / *Cool overall*, witbalans |
+| **Saturation** | hoe verzadigd de kleuren zijn: gedempt of levendig | HSL Saturation omhoog, Vibrancy | HSL Saturation omlaag, stijl *Faded* |
+| **Hue** | kleurrijkdom tegenover eenheid | zelden gewenst | harmonie *Analogous*, stijl *Monochrome*, HSL-hue-draaiingen naar elkaar toe |
+| **Complementary** | botsende kleurparen, zoals oranje tegen blauw | harmonie *Complementary*, stijl *Teal & orange* | één van de twee families ontzadigen |
+| **Extension** | een klein, sterk accent tegen een groot rustig vlak | accent beschermen (🔒) en de omgeving dempen | het accent ontzadigen |
+| **Hue order** | hoe netjes de tinten het harmoniesjabloon volgen | Aim at *Harmony* | — alleen verfijnen, geen doel op zich |
+
+**Stemmingswoorden en wat ze vragen** (Nederlands en Engels; *rustige* vindt ook *rustig*):
+
+| Woorden | Hoog | Laag |
+|---|---|---|
+| rustig, kalm, sereen, stil (calm) | — | Hue, Saturation, Complementary, Light–dark |
+| zacht, dromerig, pastel, luchtig, mist, nevel (soft) | — | Light–dark, Saturation |
+| dramatisch, krachtig, intens, grafisch, contrast (dramatic) | Light–dark, Extension | Hue |
+| somber, donker, duister, mysterieus (moody) | Light–dark | Saturation |
+| energiek, levendig, vrolijk, speels, kleurrijk (energetic) | Saturation, Hue | — |
+| filmisch, cinematic | Warm–cool, Complementary | — |
+| nostalgisch, vintage, retro, faded | — | Saturation, Light–dark |
+| fris, schoon, crisp (fresh) | — | Warm–cool |
+| minimalistisch, eenvoudig, sober, monochroom | — | Hue |
+
+Spreken twee woorden elkaar tegen, bijvoorbeeld *rustig* en *dramatisch* over Light–dark, dan laat de app dat contrast zonder pijl. Temperatuurwoorden als *warm* en *koel* sturen de stijl, niet de contrasten.
+
+**Op de voorbeeldfoto** staan Warm–cool (93) en Complementary (78) het hoogst: het karakter is oranje zonsondergang tegen blauw water. Met de intentie *Rustige, warme avond* krijgen Hue, Saturation, Complementary en Light–dark een pijl omlaag. Light–dark (65), Hue (79) en Complementary (78) staan rood, Saturation (45) oranje: de foto is nu het tegendeel van rustig. Twee kanten op:
+
+- **Rustig maken:** kies stijl *Warm overall* of harmonie *Analogous* en kijk met de preview of Complementary en Warm–cool dalen. Bescherm de boot en de jas, anders verdwijnt ook het accent (Extension).
+- **Het karakter juist omarmen:** verander de intentie in *dramatisch*. Houd Complementary en verhoog Light–dark met een contrastcurve in PhotoLab. Vergroot Extension door het water iets te ontzadigen en de rode boot te beschermen.
+
+**De grading laten sturen.** Wil je dat de app zelf zoekt, vink dan in de Grading-tab onder de contrastregel **Steer the grading toward these contrasts** aan. Dit is optioneel en staat standaard uit.
+
+Hoe het werkt:
+- De app probeert elke stijl met vier niveaus HSL Saturation en kiest de combinatie die je intentie het dichtst benadert met de kleinste ingreep.
+- Het stijlmenu staat dan vast op de gekozen stijl.
+- De tab toont wat er gekozen is, bijvoorbeeld *style Warm overall · HSL Saturation Blue −30, Red −30*, en de voorspelling, bijvoorbeeld *Hue 79 → 19 · Complementary 78 → 15*.
+- In de PhotoLab-tab staat de HSL Saturation per kanaal. Die zet je met de hand in PhotoLab's HSL-palet, want een preset kan geen HSL bevatten.
+- Beschermde kleuren (huid, het slotje) blijven buiten de verzadigingswijziging.
+
+Voor licht–donker probeert hij ook de *Light*-palet van PhotoLab: een S-curve met donkerder Blacks en Shadows en lichter Highlights en Whites, Contrast, of het omgekeerde. Die waarden staan in de PhotoLab-tab onder **Light palette** en zet je met de hand. Op de voorbeeldfoto:
+- *dramatisch* geeft een S-curve (Blacks −60, Shadows −30, Highlights +45, Whites +30): Light–dark gaat van 65 naar 100.
+- *Rustige, warme avond* geeft *Warm overall*, minder verzadiging in blauw en rood, en een omgekeerde S-curve: Light–dark gaat van 65 naar 45.
+
+De Light-palet is minder precies gekalibreerd dan Color Grading, dus controleer het resultaat in PhotoLab.
+
+Light–dark verander je dus vooral met de Light-tools van PhotoLab, niet met Color Grading.
 
 ## 5. Naar DxO PhotoLab
 

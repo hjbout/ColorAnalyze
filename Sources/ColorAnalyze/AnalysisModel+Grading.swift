@@ -66,7 +66,18 @@ extension AnalysisModel {
         hasher.combine(markersKey)
         hasher.combine(harmonyChoice?.rawValue)
         hasher.combine(harmonyRotationOverride)
-        hasher.combine(gradingStyle.rawValue)
+        hasher.combine(effectiveStyle.rawValue)
+        if let option = activeSteering?.option {
+            hasher.combine(option.tone.blacks)
+            hasher.combine(option.tone.shadows)
+            hasher.combine(option.tone.highlights)
+            hasher.combine(option.tone.whites)
+            hasher.combine(option.tone.contrast)
+            for (channel, value) in option.saturation.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                hasher.combine(channel.rawValue)
+                hasher.combine(value)
+            }
+        }
         hasher.combine(gradingAmount)
         hasher.combine(gradingTarget.rawValue)
         return hasher.finalize()

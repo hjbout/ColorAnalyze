@@ -30,7 +30,11 @@ extension AnalysisModel {
         }
         var result: (GradePreviewSettings, GradePreview.Plan)?
         if let grading = colorGrading {
-            let settings = gradeSettings(for: currentChoices, grading: grading)
+            var settings = gradeSettings(for: currentChoices, grading: grading)
+            if let option = activeSteering?.option {
+                settings = option.tone.applied(to: settings)
+                settings.hslSaturation = option.saturation
+            }
             result = (settings, GradePreview.Plan(settings))
         }
         predictionCache = (key, result?.0, result?.1)

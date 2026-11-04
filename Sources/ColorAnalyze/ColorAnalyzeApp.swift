@@ -203,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //     [--export-colors list.csv|list.json] [--export-colors-excel list.csv]
         //     [--weighting off|moderate|strong] [--wheel rgb|ryb|dxo|oklch] [--intention "warm, calm"]
         //     [--export-dxo-preset grading.preset] [--grading-amount 0-3] [--grading-style neutral|warm-highlights|cool-highlights|teal-orange|warm-overall|cool-overall|faded]
-        //     [--grading-target harmony|series|reference|separation|emphasize] [--protect 2,5] [--harmony-sector exact|narrow|wide|0-30] [--protect-skin on|off]`
+        //     [--grading-target harmony|series|reference|separation|emphasize] [--steer-intention on|off] [--protect 2,5] [--harmony-sector exact|narrow|wide|0-30] [--protect-skin on|off]`
         // `ColorAnalyze --series a.jpg b.jpg … [--series-colors N] [--palette-size N]
         //     [--export-series palette.csv|series.json] [--export-series-photos photos.csv]
         //     [--export-series-report overview.png]`
@@ -243,6 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var gradingAmount: Double?
         var gradingStyle: GradingStyle?
         var gradingTarget: AnalysisModel.GradingTarget?
+        var steer: Bool?
         while i < argv.count {
             let arg = argv[i]
             i += 1
@@ -256,6 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return numbers.count == text.split(separator: ",").count ? numbers : nil
                 } ?? []
             case "--protect-skin": protectSkin = choice(arg) { ["on": true, "off": false][$0.lowercased()] }
+            case "--steer-intention": steer = choice(arg) { ["on": true, "off": false][$0.lowercased()] }
             case "--harmony-sector": sector = choice(arg) {
                 switch $0.lowercased() {
                 case "exact": 0
@@ -319,6 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.weighting = .off
                 model.gradingStyle = .neutral
                 model.showPreview = false
+                model.steerByIntention = false
             }
             model.withoutRemembering { model.gradingAmount = 1 }
         }
@@ -379,10 +382,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let gradingAmount { model.withoutRemembering { model.gradingAmount = gradingAmount } }
             if let gradingStyle { model.withoutRemembering { model.gradingStyle = gradingStyle } }
             if let gradingTarget { model.gradingTarget = gradingTarget }
+            if let steer { model.withoutRemembering { model.steerByIntention = steer } }
             // The subject map, for the separation check and the Separation aim; the window detects it by itself.
             if hasExports, openedPhoto != nil {
                 await model.prepareSubject()
                 await model.refreshSeparation()
+                await model.refreshContrastProfile()
+                await model.refreshSteering()
             }
             // Problems that the windows show in an alert (a subject that was not found, photos that could not be read)
             // go to stderr in a batch run, where nobody sees a window.

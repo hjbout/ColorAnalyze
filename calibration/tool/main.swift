@@ -84,6 +84,10 @@ func parseFlags(_ args: [String], from start: Int) -> GradePreviewSettings {
         case "--balance": settings.balance = Double(args[i + 1])!; i += 2
         case "--tone-blacks": settings.toneBlacks = Double(args[i + 1])!; i += 2
         case "--tone-shadows": settings.toneShadows = Double(args[i + 1])!; i += 2
+        case "--tone-midtones": settings.toneMidtones = Double(args[i + 1])!; i += 2
+        case "--tone-highlights": settings.toneHighlights = Double(args[i + 1])!; i += 2
+        case "--tone-whites": settings.toneWhites = Double(args[i + 1])!; i += 2
+        case "--contrast": settings.contrast = Double(args[i + 1])!; i += 2
         case "--amount": settings.amount = Double(args[i + 1])!; i += 2
         case "--shift": settings.hueShifts = parseChannels(args[i + 1]); i += 2
         case "--hsl-sat": settings.hslSaturation = parseChannels(args[i + 1]); i += 2

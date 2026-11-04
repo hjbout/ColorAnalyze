@@ -303,6 +303,7 @@ struct ColorWheelView: View {
         // The subject map is detected for the separation check whether or not the colors are weighted.
         .task(id: model.image?.url) { await model.prepareSubject() }
         .task(id: model.separationRequestKey) { await model.refreshSeparation() }
+        .task(id: model.contrastRequestKey) { await model.refreshContrastProfile() }
     }
 
     private func seriesFitView(_ fit: PhotoConsistency, after: PhotoConsistency?) -> some View {
@@ -435,6 +436,10 @@ struct ColorWheelView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if let profile = model.contrastProfile {
+                ContrastProfileView(profile: profile, after: model.afterContrastProfile, afterLabel: model.afterLabel,
+                                    fit: fit, afterFit: model.afterHarmony, aims: model.contrastAims)
+            }
             Divider()
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
@@ -478,6 +483,12 @@ struct ColorWheelView: View {
         VStack(alignment: .leading, spacing: 22) {
             IntentionField(title: "Intention", placeholder: "What should this photo feel like?",
                            text: $model.intention)
+            if let profile = model.contrastProfile {
+                IntentionContrastSummary(profile: profile, after: model.afterContrastProfile, aims: model.contrastAims)
+                if !model.contrastAims.isEmpty {
+                    steeringControls
+                }
+            }
             whiteBalanceNote()
             separationNote()
             VStack(alignment: .leading, spacing: 8) {
@@ -512,11 +523,13 @@ struct ColorWheelView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Style").help("A creative direction on top of the harmony: the greys of the shadows and highlights take on a cast of their own, such as warm highlights over cool shadows.")
-                    LivePreviewPicker(selection: model.gradingStyle,
+                    LivePreviewPicker(selection: model.effectiveStyle,
                                       items: GradingStyle.allCases.map { ($0, $0.displayName) }) { style, remember in
                         if remember { model.gradingStyle = style } else { model.withoutRemembering { model.gradingStyle = style } }
                     }
                     .frame(maxWidth: .infinity)
+                    .disabled(model.activeSteering != nil)
+                    .help(model.activeSteering != nil ? "Chosen for your intention. Switch off “Steer the grading toward these contrasts” to choose the style yourself." : "")
                 }
                 do {
                     VStack(alignment: .leading, spacing: 4) {
@@ -532,7 +545,7 @@ struct ColorWheelView: View {
                         }
                     }
                 }
-                if let hint = model.intentionStyle {
+                if model.activeSteering == nil, let hint = model.intentionStyle {
                     HStack(spacing: 6) {
                         Image(systemName: "lightbulb")
                             .foregroundStyle(.secondary)
@@ -642,21 +655,47 @@ struct ColorWheelView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            if let grading = model.colorGrading {
-                if grading.toneBlacks != 0 || grading.toneShadows != 0 {
+            if model.colorGrading != nil {
+                let light = model.lightPalette
+                if !light.isEmpty {
                     Divider()
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Selective Tone")
+                        Text("Light palette")
                             .font(.subheadline.weight(.semibold))
-                        Text([grading.toneBlacks != 0 ? "Blacks \(grading.toneBlacks > 0 ? "+" : "")\(grading.toneBlacks)" : nil,
-                              grading.toneShadows != 0 ? "Shadows \(grading.toneShadows > 0 ? "+" : "")\(grading.toneShadows)" : nil]
-                            .compactMap { $0 }.joined(separator: " · "))
+                        Text(light.map { "\($0.name) \(signedRounded($0.value, unit: ""))" }.joined(separator: " · "))
                             .font(.caption)
                             .monospacedDigit()
+                        Text("Selective Tone and Contrast, set by hand: a Color Grading preset cannot carry them.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 Divider()
                 hslSection
+                if let saturation = model.activeSteering?.option.saturation, !saturation.isEmpty {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("HSL: Saturation per channel")
+                            .font(.subheadline.weight(.semibold))
+                        ForEach(saturation.sorted { $0.key.rawValue < $1.key.rawValue }, id: \.key) { channel, value in
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(SRGBColor.fromHSB(h: channel.centerHue ?? 0, s: 0.75, b: 0.95).swiftUIColor)
+                                    .frame(width: 12, height: 12)
+                                Text(channel.displayName)
+                                    .frame(width: 62, alignment: .leading)
+                                Text("Saturation \(signedRounded(value, unit: ""))")
+                                    .monospacedDigit()
+                                Spacer(minLength: 0)
+                            }
+                            .font(.caption)
+                        }
+                        Text("Chosen for the contrasts your intention asks for. Set them in PhotoLab's HSL palette; a Color Grading preset cannot carry them.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         }
     }
@@ -728,6 +767,47 @@ struct ColorWheelView: View {
         case .onTarget: "already on target"
         case .tooNeutral: "too neutral to tint"
         }
+    }
+
+    /// The switch that lets the grading follow the intention's contrasts, and what it chose.
+    @ViewBuilder
+    private var steeringControls: some View {
+        @Bindable var model = model
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Steer the grading toward these contrasts", isOn: $model.steerByIntention)
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+                .help("Chooses the style, an HSL Saturation per channel and, for light–dark, an S-curve or Contrast in the Light palette so that the predicted contrasts come as close as possible to what your intention asks, with the least change. Off: you choose the style yourself and the contrasts are only shown.")
+            if let steering = model.activeSteering {
+                let option = steering.option
+                let saturation = option.saturation.sorted { $0.key.rawValue < $1.key.rawValue }
+                let tone = option.tone
+                let toneParts = [("Blacks", tone.blacks), ("Shadows", tone.shadows), ("Highlights", tone.highlights),
+                                 ("Whites", tone.whites), ("Contrast", tone.contrast)].filter { $0.1 != 0 }
+                let parts = ["style \(option.style.displayName)"]
+                    + (saturation.isEmpty ? [] : ["HSL Saturation " + saturation.map { "\($0.key.displayName) \(signedRounded($0.value, unit: ""))" }.joined(separator: ", ")])
+                    + (toneParts.isEmpty ? [] : [toneParts.map { "\($0.0) \(signedRounded($0.1, unit: ""))" }.joined(separator: ", ")])
+                Text("Chosen for your intention: " + parts.joined(separator: " · ") + ".")
+                    .foregroundStyle(.secondary)
+                let kinds = ContrastProfile.Kind.allCases.filter { steering.after[$0] != nil }
+                let unmet = kinds.filter { kind in
+                    model.contrastAims[kind].map { ContrastProfile.status(of: steering.after[kind] ?? 0, toward: $0.aim) != .met } ?? false
+                }
+                Text("Predicted: " + kinds.map { "\($0.displayName) \(Int(((steering.before[$0] ?? 0) * 100).rounded())) → \(Int(((steering.after[$0] ?? 0) * 100).rounded()))" }.joined(separator: " · "))
+                    .foregroundStyle(.secondary)
+                if !unmet.isEmpty {
+                    Text(unmet.map(\.displayName).joined(separator: ", ") + (unmet.count == 1 ? " is" : " are")
+                         + " not fully reachable with Color Grading, HSL Saturation and the Light palette"
+                         + (unmet.contains(.lightDark) ? ": for light–dark, a stronger Tone Curve in PhotoLab goes further." : "."))
+                        .foregroundStyle(.orange)
+                }
+            } else if model.steerByIntention {
+                Text("Finding the grading for your intention…").foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption)
+        .fixedSize(horizontal: false, vertical: true)
+        .task(id: model.steeringRequestKey) { await model.refreshSteering() }
     }
 
     /// How well the subject stands apart from the background, and what the grading does to it.
@@ -1055,5 +1135,169 @@ private struct SeparationSwatch: View {
             Text(label).foregroundStyle(.secondary)
         }
         .help("Mean color of the \(label.lowercased()): \(color.hex)")
+    }
+}
+
+/// Itten's contrasts of the photo as bars, with the harmony template's fit as one signal among them: how the hues are
+/// ordered on the wheel says little about how light against dark, warm against cool or vivid against muted the photo is.
+struct ContrastProfileView: View {
+    let profile: ContrastProfile
+    let after: ContrastProfile?
+    let afterLabel: String
+    let fit: HarmonyFit?
+    let afterFit: HarmonyFit?
+    /// What the intention asks of each contrast.
+    var aims: [ContrastProfile.Kind: (aim: Intention.ContrastAim, words: [String])] = [:]
+
+    /// The template fit as a strength: 1 on target, 0 at 30° or more off.
+    private static func order(_ fit: HarmonyFit) -> Double { max(0, 1 - fit.deviation / 30) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("Contrasts").font(.subheadline)
+                Spacer()
+                if after != nil {
+                    Text("now → \(afterLabel.lowercased())").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .help("Itten's contrasts, measured on all pixels of the photo. None is better high or low: they describe the photo, and what suits it depends on what it should feel like. The template fit of the harmony is one of them (Hue order).")
+            if !aims.isEmpty {
+                Text("↑ ↓ what your intention asks for: green there, orange half way, red the other way.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(ContrastProfile.Kind.allCases) { kind in
+                row(kind.displayName, strength: profile.strength(kind), after: after?.strength(kind),
+                    reading: profile.reading(kind), help: kind.explanation, aim: aims[kind])
+            }
+            if let fit {
+                row("Hue order", strength: Self.order(fit), after: afterFit.map(Self.order),
+                    reading: String(format: "%@, fit ±%.0f°", fit.kind.displayName.lowercased(), fit.deviation),
+                    help: "How closely the colors follow the harmony template above (the weighted distance to its sectors). One signal among the others: a photo can fit a template well and still be flat, or fit none and work.")
+            }
+        }
+    }
+
+    private func row(_ name: String, strength: Double, after: Double?, reading: String, help: String,
+                     aim: (aim: Intention.ContrastAim, words: [String])? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 8) {
+                HStack(spacing: 3) {
+                    Text(name)
+                    if let aim {
+                        let status = ContrastProfile.status(of: after ?? strength, toward: aim.aim)
+                        Image(systemName: aim.aim == .high ? "arrow.up" : "arrow.down")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Self.color(status))
+                            .help("Your intention (“\(aim.words.joined(separator: ", "))”) asks for a \(aim.aim.rawValue) \(name.lowercased()) contrast: \(Self.statusText(status)).")
+                    }
+                }
+                .font(.caption)
+                .frame(width: 96, alignment: .leading)
+                ContrastBar(value: strength, after: after)
+                    .frame(height: 6)
+                HStack(spacing: 0) {
+                    Text("\(Int((strength * 100).rounded()))")
+                    if let after {
+                        let progress = aim.map { ContrastProfile.progress(from: strength, to: after, toward: $0.aim) } ?? 0
+                        Text(" → \(Int((after * 100).rounded()))")
+                            .foregroundStyle(progress > 0 ? Color.green : progress < 0 ? Color.red : Color.primary)
+                    }
+                }
+                .font(.caption)
+                .monospacedDigit()
+                .frame(width: 58, alignment: .trailing)
+            }
+            Text(reading)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 104)
+        }
+        .help(help)
+    }
+}
+
+extension ContrastProfileView {
+    static func color(_ status: ContrastProfile.AimStatus) -> Color {
+        switch status {
+        case .met: .green
+        case .partly: .orange
+        case .opposite: .red
+        }
+    }
+
+    static func statusText(_ status: ContrastProfile.AimStatus) -> String {
+        switch status {
+        case .met: "it is there"
+        case .partly: "it is half way"
+        case .opposite: "it is the other way"
+        }
+    }
+}
+
+/// What the intention asks of the contrasts, in one line under it: the asked contrasts with their arrows and values.
+struct IntentionContrastSummary: View {
+    let profile: ContrastProfile
+    let after: ContrastProfile?
+    let aims: [ContrastProfile.Kind: (aim: Intention.ContrastAim, words: [String])]
+
+    var body: some View {
+        let kinds = ContrastProfile.Kind.allCases.filter { aims[$0] != nil }
+        if !kinds.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Contrasts for your intention").foregroundStyle(.secondary)
+                FlowingItems(kinds.map { kind in
+                    let aim = aims[kind]!.aim
+                    let now = profile.strength(kind), then = after?.strength(kind)
+                    let status = ContrastProfile.status(of: then ?? now, toward: aim)
+                    return (kind.displayName + (aim == .high ? " ↑ " : " ↓ ")
+                            + "\(Int((now * 100).rounded()))" + (then.map { " → \(Int(($0 * 100).rounded()))" } ?? ""),
+                            ContrastProfileView.color(status))
+                })
+            }
+            .font(.caption)
+            .help("What the words of your intention ask of Itten's contrasts (see Contrasts in the Harmony tab), and where the photo stands: green there, orange half way, red the other way. With the preview on, the second number is the prediction.")
+        }
+    }
+}
+
+/// Short colored items in lines that wrap.
+private struct FlowingItems: View {
+    let items: [(text: String, color: Color)]
+    init(_ items: [(String, Color)]) { self.items = items.map { (text: $0.0, color: $0.1) } }
+
+    var body: some View {
+        Text(items.enumerated().reduce(AttributedString()) { result, element in
+            var piece = AttributedString(element.element.text)
+            piece.foregroundColor = element.element.color
+            var separator = AttributedString(element.offset == 0 ? "" : "  ·  ")
+            separator.foregroundColor = .secondary
+            return result + separator + piece
+        })
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A strength from 0 to 1 as a filled track, with the strength after grading as a tick.
+private struct ContrastBar: View {
+    let value: Double
+    let after: Double?
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.primary.opacity(0.1))
+                Capsule().fill(Color.accentColor.opacity(0.75))
+                    .frame(width: max(3, geo.size.width * value))
+                if let after {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(.primary)
+                        .frame(width: 2, height: geo.size.height + 6)
+                        .offset(x: min(geo.size.width - 2, max(0, geo.size.width * after - 1)))
+                }
+            }
+        }
     }
 }

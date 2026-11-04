@@ -67,4 +67,56 @@ public enum Intention {
             return kinds.count == 1 ? (kinds[0].0, kinds[0].1) : nil
         }
     }
+
+    // MARK: Contrasts
+
+    /// Which way a contrast should go for a mood.
+    public enum ContrastAim: String, Sendable, Equatable { case high, low }
+
+    /// Moods and the contrasts they ask for (Itten's, see `ContrastProfile`), by word beginnings in English and Dutch.
+    /// Temperature words are left out: whether *warm* means warm light over cool shade or warmth throughout is the
+    /// style's question.
+    static let contrastMoods: [(stems: [String], aims: [ContrastProfile.Kind: ContrastAim])] = [
+        // Calm: one family of hues, little to clash.
+        (["calm", "kalm", "rustig", "seren", "sereen", "peace", "vredig", "quiet", "stil", "tranquil"],
+         [.hue: .low, .saturation: .low, .complementary: .low, .lightDark: .low]),
+        // Soft and misty: a short tonal range, muted color.
+        (["soft", "zacht", "gentle", "dream", "droom", "pastel", "airy", "luchtig", "mist", "nevel", "fog", "haz", "dauw"],
+         [.lightDark: .low, .saturation: .low]),
+        // Dramatic: light against dark, one accent, few hues to distract.
+        (["drama", "bold", "krachtig", "intens", "power", "stoer", "graphic", "grafisch", "punch", "contrast"],
+         [.lightDark: .high, .extension: .high, .hue: .low]),
+        // Moody: deep shadows, held-back color.
+        (["moody", "somber", "duister", "dark", "donker", "myster", "noir", "brood"],
+         [.lightDark: .high, .saturation: .low]),
+        // Energetic: vivid color, many hues.
+        (["energ", "lively", "levendig", "vibrant", "vrolijk", "cheer", "playful", "speels", "kleurrijk", "colorful", "colourful"],
+         [.saturation: .high, .hue: .high]),
+        // Cinematic: warm against cool, complementary pairs.
+        (cinematicStems, [.warmCool: .high, .complementary: .high]),
+        // Nostalgic and faded: muted color, lifted darks.
+        (fadedStems, [.saturation: .low, .lightDark: .low]),
+        // Fresh: one temperature, not warm against cool.
+        (["fresh", "fris", "crisp", "clean", "schoon"], [.warmCool: .low]),
+        // Minimal: few hues.
+        (monochromeStems + ["simpel", "simple", "eenvoud", "sober"], [.hue: .low]),
+    ]
+
+    /// The contrasts a note asks for, with the words that ask; a contrast that one word wants high and another low is
+    /// left out (the note does not decide).
+    public static func contrastAims(for text: String) -> [ContrastProfile.Kind: (aim: ContrastAim, words: [String])] {
+        let tokens = text.lowercased().split { !$0.isLetter }.map(String.init)
+        var found: [ContrastProfile.Kind: [ContrastAim: [String]]] = [:]
+        for mood in contrastMoods {
+            let words = tokens.filter { token in mood.stems.contains { token.hasPrefix($0) } }
+            guard !words.isEmpty else { continue }
+            for (kind, aim) in mood.aims {
+                for word in words where !(found[kind]?[aim]?.contains(word) ?? false) { found[kind, default: [:]][aim, default: []].append(word) }
+            }
+        }
+        return found.compactMapValues { aims in
+            guard aims.count == 1, let (aim, words) = aims.first else { return nil }
+            return (aim, words)
+        }
+    }
 }

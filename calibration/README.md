@@ -77,3 +77,69 @@ PhotoLab's *Light* palette has numeric sliders (Whites, Highlights, Midtones, Sh
 - On colors it is not a curve per channel (error 3.0 against an effect of 6.7) but a **gain by the mean of the three channels**: each pixel is scaled by `curve(mean)/mean`, which keeps its hue and chroma (error 1.5; the luminance weights of Rec.709 or Rec.2020 as the "mean" give 2.5–2.7, the maximum of the channels 3.4; an OKLab lightness map with the chroma kept 2.0).
 - The sliders are about linear (+50 gives 0.4–0.55 of +100) and add up (the combination is within 10 % of 0.6 × Blacks + 0.4 × Shadows). The table (`GradePreviewToneTable.swift`) holds the +100 and −100 curves; between them the model scales linearly.
 - Not measured: Whites, Highlights and Midtones; the Tone Curve; Contrast; the order of these tools against Color Grading (the preview applies them first).
+
+### To measure next: the rest of the Light palette (requested 4 November 2026)
+
+Why: the intention's *light–dark* contrast cannot be raised with what is modeled now. Deeper Blacks darken the midtones too in the model, and raising Shadows to make up for it lifts the deepest blacks even more, so the tonal range shrinks instead of growing. A real S-curve needs the other end as well, Whites and Highlights, plus Midtones and the Contrast slider, and none of these were measured. A second point for Blacks and Shadows at −50 checks whether the negative side is as linear as the model assumes (only −100 was measured there, and it clipped).
+
+**Before you start.** Open `chart.jpg` in PhotoLab 10 with every correction off: DxO Smart Lighting, ClearView Plus, Contrast, Color Grading, HSL, Vignetting, Lens Sharpness and the rest. Use the same export as before: *Image ▸ Export to ▸ Disk*, TIFF 16-bit, full size, no resizing, sRGB, to `~/Pictures/ColorAnalyze Calibration/chart.tif`. Build the tool once with `./calibration/score.sh`, then file each export with `./calibration/harvest.sh NAME` straight after it. Reset everything between exports. Leave Microcontrast and Fine Contrast at 0; they are local and a chart of flat patches cannot measure them.
+
+| Name | Palette | Setting (everything else 0) | Why |
+|---|---|---|---|
+| `T0-check` | — | nothing (the unedited chart) | must equal `E0-baseline`; if it does not, something else is still on |
+| `T-whites-100` | Light ▸ Selective Tone | Whites +100 | the light end of the curve |
+| `T-whites-m100` | Light ▸ Selective Tone | Whites −100 | |
+| `T-whites-50` | Light ▸ Selective Tone | Whites +50 | is it linear? |
+| `T-highlights-100` | Light ▸ Selective Tone | Highlights +100 | |
+| `T-highlights-m100` | Light ▸ Selective Tone | Highlights −100 | |
+| `T-highlights-50` | Light ▸ Selective Tone | Highlights +50 | |
+| `T-midtones-100` | Light ▸ Selective Tone | Midtones +100 | |
+| `T-midtones-m100` | Light ▸ Selective Tone | Midtones −100 | |
+| `T-midtones-50` | Light ▸ Selective Tone | Midtones +50 | |
+| `T-blacks-m50` | Light ▸ Selective Tone | Blacks −50 | the negative side between 0 and the clipped −100 |
+| `T-shadows-m50` | Light ▸ Selective Tone | Shadows −50 | the same for Shadows |
+| `K-contrast-50` | Light ▸ Contrast | Contrast +50 | the global contrast slider |
+| `K-contrast-100` | Light ▸ Contrast | Contrast +100 | is it linear? |
+| `K-contrast-m50` | Light ▸ Contrast | Contrast −50 | |
+| `T-scurve` | Light ▸ Selective Tone | Blacks −40, Shadows −20, Highlights +30, Whites +20 | hold-out: an S-curve built from the single sliders, to check that they add up |
+| `T-scurve-color` | Light ▸ Selective Tone + Color Grading | `T-scurve` plus Color Grading Highlights Hue 36 / Sat 40 and Shadows Hue 231 / Sat 40 | the order of the two tools: the preview applies Selective Tone first |
+
+Seventeen exports. If the Contrast slider turns out to depend on the image (an adaptive curve), it will show as a mismatch between `K-contrast-50` on the chart and on a photo. In that case it stays advice in the app, not a lever.
+
+**Measured on 4 November 2026** (PhotoLab 10, exports driven by Claude through macOS accessibility; `T0-check` equals `E0-baseline` byte for byte). Change of the grey ramp in OKLab L × 100, against the unedited chart (baseline row):
+
+| grey patch | 0 | 2 | 4 | 6 | 8 | 10 | 12 | 14 | 16 |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline | 0 | 24 | 37 | 49 | 60 | 71 | 81 | 91 | 100 |
+| Whites +100 | 0 | +6 | +10 | +14 | +18 | +21 | +19 | +9 | 0 |
+| Whites +50 | 0 | +2 | +4 | +6 | +8 | +9 | +10 | +9 | 0 |
+| Whites −100 | 0 | −3 | −5 | −7 | −8 | −10 | −12 | −13 | −15 |
+| Highlights +100 | 0 | +1 | +4 | +10 | +19 | +23 | +17 | +8 | 0 |
+| Highlights +50 | 0 | 0 | +2 | +4 | +7 | +11 | +10 | +6 | 0 |
+| Highlights −100 | 0 | −1 | −3 | −6 | −10 | −15 | −20 | −24 | 0 |
+| Midtones +100 | 0 | 0 | +6 | +14 | +17 | +12 | +5 | 0 | 0 |
+| Midtones +50 | 0 | 0 | +3 | +7 | +8 | +6 | +2 | 0 | 0 |
+| Midtones −100 | 0 | 0 | −6 | −15 | −18 | −13 | −5 | 0 | 0 |
+| Blacks −50 | 0 | −24 | −14 | −10 | −8 | −5 | −4 | −2 | 0 |
+| Blacks −100 (October) | 0 | −24 | −37 | −26 | −19 | −14 | −9 | −4 | 0 |
+| Shadows −50 | 0 | −9 | −14 | −13 | −7 | −3 | −1 | 0 | 0 |
+| Shadows −100 (October) | 0 | −17 | −23 | −29 | −20 | −9 | −3 | −1 | 0 |
+| Contrast +50 | 0 | −3 | −3 | −2 | 0 | +2 | +2 | +2 | 0 |
+| Contrast +100 | 0 | −7 | −7 | −4 | 0 | +4 | +5 | +4 | 0 |
+| Contrast −50 | 0 | +3 | +3 | +2 | 0 | −2 | −2 | −2 | 0 |
+| S-curve (B −40, S −20, H +30, W +20) | 0 | −20 | −14 | −11 | −3 | +4 | +8 | +6 | 0 |
+
+First readings:
+- **The S-curve does stretch the tonal range**: the darks go down by up to 20 and the lights up by up to 8. That is what the Blacks-only model could not do.
+- **Blacks −50 stays much more in the darks than half of −100.** It crushes the darkest patch as far as −100 does, but it reaches the midtones only half as much. The linear interpolation in the current model is therefore wrong on the negative side.
+- **The other sliders are about symmetric and linear**, with clipping at the ends.
+- **Contrast is a mild, symmetric S around the middle grey.**
+- **`T-scurve-color`** adds Color Grading Highlights 36/40 and Shadows 231/40 on top of the S-curve. It still has to be scored for the order of the two tools.
+
+While the exports were made, stray keystrokes reached PhotoLab's image browser twice. They wrote a star rating of 0 into the XMP of `chart.jpg` and `spanje.jpg` in `~/Pictures/ColorAnalyze Calibration`; the pixels are unchanged, as the chart's dump shows. They also exported `spanje.tif` once, which was removed. `K-contrast-50` was exported while both images were selected, but the chart export itself is valid.
+
+**What was done with them** (4 November 2026). `emit_extra.py` now writes `GradePreviewToneTable.swift` with every slider at every measured amount, and the preview interpolates between them. `score.sh` scores each export.
+- **Model choice.** Two models were tried on the colored patches: gain by the mean, and one curve per channel. Gain by the mean, clipped at white, fits Selective Tone best (Blacks −50 0.8 against 7.1; Midtones −100 1.8 against 9.5). Lifts of Highlights and Whites stay at about 40 % of the effect (5.4 against 12.5). A curve per channel fits Contrast best (0.6 against 2.3).
+- **Adding versus composing.** Added up, the four sliders of `T-scurve` miss by 2.2 on the greys (effect 8.0). Composed one after another they do better: the order Shadows, Blacks, Whites, Highlights fits best, at 1.6. The remaining error is probably a non-linearity between 0 and ±50 that two more points per slider would show.
+- **S-curve with Color Grading.** `T-scurve-color` scores like `T-scurve` (1.6 grey, 2.7 colors), so applying Selective Tone before Color Grading does no harm here.
+- **Use.** The intention steering tries S-curves and Contrast as levers for *light–dark*, and the PhotoLab tab shows them under *Light palette*.

@@ -68,7 +68,7 @@ extension AnalysisModel {
 
     /// The choices the suggestion is built from right now, without the fit.
     var currentChoices: GradeVariant {
-        GradeVariant(style: gradingStyle, amount: gradingAmount, target: gradingTarget, harmony: harmonyChoice,
+        GradeVariant(style: effectiveStyle, amount: gradingAmount, target: gradingTarget, harmony: harmonyChoice,
                      harmonyRotation: harmonyRotationOverride, hueSpace: hueSpace)
     }
 
