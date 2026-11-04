@@ -458,8 +458,8 @@ final class AnalysisModel {
 
     // MARK: Region overlay
 
-    var showRegions = true {
-        didSet { if showRegions != oldValue { refreshRegion() } }
+    var showRegions = AnalysisModel.remembered("showRegions") ?? true {
+        didSet { if showRegions != oldValue { remember(showRegions, as: "showRegions"); refreshRegion() } }
     }
     /// Dims everything except the pixels that belong to the hovered/selected marker's color.
     var regionOverlay: CGImage?
