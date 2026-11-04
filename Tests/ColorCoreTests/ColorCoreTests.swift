@@ -2677,3 +2677,41 @@ import Testing
         #expect(ContrastSteering.tonePlans(aims: [.hue: .low]) == [ContrastSteering.Tone()])
     }
 }
+
+@Suite struct ToneCheckTests {
+    private func pixels(_ parts: [(Float, Int)]) -> [SIMD3<Float>] {
+        parts.flatMap { [SIMD3<Float>](repeating: SIMD3($0.0, $0.0, $0.0), count: $0.1) }
+    }
+
+    @Test func aWellExposedRampIsFine() {
+        let ramp = (0...200).map { i -> SIMD3<Float> in let v = Float(ColorMath.sRGBToLinear(0.02 + 0.96 * Double(i) / 200)); return SIMD3(v, v, v) }
+        let check = ToneCheck.check(ramp)
+        #expect(check.verdict() == .ok)
+        #expect(check.blown == 0 && check.crushed == 0)
+    }
+
+    @Test func blownAndCrushedAreasAreFound() {
+        let check = ToneCheck.check(pixels([(1, 50), (0.2, 850), (0, 100)]))
+        #expect(abs(check.blown - 0.05) < 1e-9)
+        #expect(abs(check.crushed - 0.1) < 1e-9)
+        let kinds = check.findings().map(\.kind)
+        #expect(kinds.contains(.blownHighlights) && kinds.contains(.crushedShadows))
+        #expect(check.verdict() == .clear)
+    }
+
+    @Test func aClippedChannelIsNamed() {
+        let red = [SIMD3<Float>](repeating: SIMD3(1.2, 0.3, 0.1), count: 100)
+        let check = ToneCheck.check(red + pixels([(0.001, 50), (0.9, 50), (0.3, 800)]))
+        let finding = check.findings().first { $0.kind == .clippedChannel }
+        #expect(finding?.text.contains("red") == true)
+        #expect(check.blown == 0)
+    }
+
+    @Test func aMistyPhotoIsFlatUnlessSoftTonesAreWanted() {
+        let check = ToneCheck.check(pixels([(0.25, 500), (0.45, 500)]))
+        #expect(check.findings().contains { $0.kind == .noBlack })
+        #expect(check.findings().contains { $0.kind == .noWhite })
+        #expect(check.findings(softTones: true).isEmpty)
+        #expect(check.verdict(softTones: true) == .ok)
+    }
+}

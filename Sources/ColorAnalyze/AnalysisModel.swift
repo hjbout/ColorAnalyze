@@ -401,6 +401,10 @@ final class AnalysisModel {
     var steering: ContrastSteering.Result?
     @ObservationIgnored var steeringKey: Int?
     var afterContrastProfile: ContrastProfile?
+    /// Clipping, black and white point of the photo, and the same after grading (graded version or preview).
+    var toneCheck: ToneCheck?
+    var afterToneCheck: ToneCheck?
+    @ObservationIgnored var toneKey: Int?
     @ObservationIgnored var contrastKey: Int?
     /// True when `separation` was measured with the foreground mask.
     var separationUsesForeground = false
@@ -560,6 +564,9 @@ final class AnalysisModel {
                 afterSeparation = nil
                 contrastProfile = nil
                 afterContrastProfile = nil
+                toneCheck = nil
+                afterToneCheck = nil
+                toneKey = nil
                 steering = nil
                 steeringKey = nil
                 contrastKey = nil

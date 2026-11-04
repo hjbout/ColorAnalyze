@@ -5,7 +5,7 @@ macOS app that finds the dominant colors in a photo as a starting point for colo
 - **Left** – the photo with numbered markers on the dominant color areas. Drag a marker to sample another spot, double-click to add one, select + ⌫ to remove. Let go of the selection with **Esc** (*Analysis ▸ Deselect Color*), by clicking anywhere on the photo pane or the wheel that is not a marker (also the grey beside the photo), or by ⌘-clicking the selected row in the list.
 - **Sample size** – a color is the average of a disc around its marker (1.5% of the photo's short side by default). Select a color and set **Sample size** (0.3–5%, double-click resets) to average over less of a small detail or more of a grainy area; the dashed ring on the zoomed photo shows the disc. It is saved per marker in the session.
 - **Middle** – per color: hex (copy), RGB, HSL, coverage %, DxO HSL channel, Color Grading tonal range, and the hue shift that puts it on the harmony.
-- **Right** – HSB color wheel (hue = angle, red at 3 o'clock, counter-clockwise; saturation = radius) with the same markers, sized by coverage, and an L* strip split into Shadows / Midtones / Highlights. Below them three tabs, in working order (⌥⌘1–3, remembered): **Harmony** (intention, wheel, harmony picker — auto-detect or fixed; drag the ◆ handle to rotate —, reference photo and series fit; skin tone line, skin protection and target sectors under the ⚙ menu beside the wheel picker), **Grading** (white balance warning, *Aim at*, style, predicted fit, preview) and **PhotoLab** (everything to set in PhotoLab: Color Grading wheels with Export Preset, Master, Balance, Selective Tone, HSL hue per channel). A ⚠︎ on a tab marks a warning inside it.
+- **Right** – HSB color wheel (hue = angle, red at 3 o'clock, counter-clockwise; saturation = radius) with the same markers, sized by coverage, and an L* strip split into Shadows / Midtones / Highlights. Below them three tabs, in working order (⌥⌘1–3, remembered): **Harmony** (intention, wheel, harmony picker — auto-detect or fixed; drag the ◆ handle to rotate —, reference photo and series fit; skin tone line, skin protection and target sectors under the ⚙ menu beside the wheel picker), **Grading** (five steps: white balance, tone, balance and skin, harmony, style; see *Tone check and the steps of the Grading tab*) and **PhotoLab** (everything to set in PhotoLab: Color Grading wheels with Export Preset, Master, Balance, Selective Tone, HSL hue per channel). A ⚠︎ on a tab marks a warning inside it.
 
 New here? Start with the [tutorial](docs/TUTORIAL.md) (Dutch, with a sample photo).
 
@@ -153,7 +153,25 @@ HSL adjustments are not written, for two reasons. (1) PhotoLab has no HSL preset
 
 ## White balance check
 
-Grading comes after white balance: a color cast shifts every color, so a harmony or a grade built on it aims at the wrong hues. In the *Grading* tab (marked ⚠︎ then) a line appears when the nearly neutral parts of the photo (pixels with OKLab chroma below 0.035 and lightness 0.25–0.92, at least 3 % of the photo) lean to a color on average: *Slight cool (blue) cast in the neutral areas (22 % of the photo). If they should be neutral, correct white balance first: a warmer Temperature. Then analyze again.* The advice is the opposite of the cast, in PhotoLab's terms (Temperature, Tint). *Slight* starts at a mean chroma of 0.010, *clear* (red icon) at 0.020. It is a hint, not a verdict: a white wall at sunset or a blue-hour sky is colored for a reason, and the check cannot tell. It looks at the whole photo (no subject weighting). The JSON export carries `whiteBalance` (`verdict`, `cast`, `neutralSharePercent`, `direction`, `advice`) when the photo could be judged.
+Grading comes after white balance: a color cast shifts every color, so a harmony or a grade built on it aims at the wrong hues. In the *Grading* tab (step 1, marked ⚠︎ then) a line appears when the nearly neutral parts of the photo (pixels with OKLab chroma below 0.035 and lightness 0.25–0.92, at least 3 % of the photo) lean to a color on average: *Slight cool (blue) cast in the neutral areas (22 % of the photo). If they should be neutral, correct white balance first: a warmer Temperature. Then analyze again.* The advice is the opposite of the cast, in PhotoLab's terms (Temperature, Tint). *Slight* starts at a mean chroma of 0.010, *clear* (red icon) at 0.020. It is a hint, not a verdict: a white wall at sunset or a blue-hour sky is colored for a reason, and the check cannot tell. It looks at the whole photo (no subject weighting). The JSON export carries `whiteBalance` (`verdict`, `cast`, `neutralSharePercent`, `direction`, `advice`) when the photo could be judged.
+
+## Tone check and the steps of the Grading tab
+
+The *Grading* tab is a list of steps, in the order a colorist works: **1 White balance → 2 Tone → 3 Balance and skin → 4 Harmony → 5 Style**. A step that can be judged shows how it stands: a green check, or an orange or red warning. A warning in the first two steps also puts ⚠︎ on the tab.
+
+- **1 White balance**: the white balance check (see above). When the neutral areas are neutral, the step says so.
+- **2 Tone**: clipping, black and white point, before any color work. A grade cannot bring back what is clipped, and a photo without a real black or white looks flat whatever its colors do. The check is measured on every other pixel of the photo and reports:
+  - **Blown highlights**: all three channels at white, from 0.5 % (clear from 3 %).
+  - **A clipped channel**: one channel at white where the others are not, i.e. a saturated color that has lost its gradation, from 1 % (clear from 5 %).
+  - **Crushed shadows**: all three at black, from 2 % (clear from 8 %).
+  - **No deep black**: the darkest 0.5 % above lightness 25 (clear above 35).
+  - **No bright white**: the lightest 0.5 % below 80 (clear below 70).
+  - **Narrow range**: under 50 between them.
+
+  Each finding comes with what to try in PhotoLab, e.g. *Lower Highlights or Whites (Light palette), or recover them from the RAW*. When the *Intention* asks for soft tones (*zacht*, *mist*, *nostalgisch*: light–dark low), a missing black or white is no fault and is not reported. With a graded version or the preview on, a line shows what the grade does, e.g. *Predicted: black 19 → 12 · white 87 → 95 · blown 0.0 % → 1.2 %*; it turns red when the grade clips more. The JSON export carries `tone`.
+- **3 Balance and skin**: the separation of subject and background (green when strong, orange when weak) and *Protect skin tones*.
+- **4 Harmony**: *Aim at* and how far the colors are predicted to be from their targets.
+- **5 Style**: the contrasts of the intention with the optional steering, the style, the amount and the preview notes.
 
 ## Harmony sectors
 

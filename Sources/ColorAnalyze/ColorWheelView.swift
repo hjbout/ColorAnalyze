@@ -109,7 +109,8 @@ struct ColorWheelView: View {
     private func tabTitle(_ tab: PaneTab) -> String {
         switch tab {
         case .harmony: "Harmony"
-        case .grading: model.whiteBalance.direction != nil ? "Grading ⚠︎" : "Grading"
+        case .grading: model.whiteBalance.direction != nil || model.toneVerdict == .slight || model.toneVerdict == .clear
+            ? "Grading ⚠︎" : "Grading"
         case .photoLab: model.effectiveGradingTarget != .emphasize && model.hslSuggestions.contains(where: \.isMixed)
             ? "PhotoLab ⚠︎" : "PhotoLab"
         }
@@ -304,6 +305,7 @@ struct ColorWheelView: View {
         .task(id: model.image?.url) { await model.prepareSubject() }
         .task(id: model.separationRequestKey) { await model.refreshSeparation() }
         .task(id: model.contrastRequestKey) { await model.refreshContrastProfile() }
+        .task(id: model.contrastRequestKey) { await model.refreshToneCheck() }
     }
 
     private func seriesFitView(_ fit: PhotoConsistency, after: PhotoConsistency?) -> some View {
@@ -363,7 +365,6 @@ struct ColorWheelView: View {
     private func harmonyTab(fit: HarmonyFit?) -> some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 22) {
-            whiteBalanceNote()
             IntentionField(title: "Intention", placeholder: "What should this photo feel like?",
                            text: $model.intention)
             if let profile = model.contrastProfile {
@@ -477,94 +478,55 @@ struct ColorWheelView: View {
         }
     }
 
-    /// The choices that steer the grading suggestion, with what they are predicted to achieve.
+    /// The grading as a list of steps in the order a colorist works: white balance and tone first, then balance and skin, the
+    /// harmony the colors aim at, and the style on top.
     @ViewBuilder
     private var gradingTab: some View {
         @Bindable var model = model
-        VStack(alignment: .leading, spacing: 22) {
-            separationNote()
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Aim at").help("Harmony: tint toward the harmony's hues. Series / Reference: toward that palette. Separation: turn the background's colors away from the subject's, so the subject stands apart. Tints: strengthen the faint tint each tonal range already has.")
-                    Picker("Aim at", selection: $model.gradingTarget) {
-                        Text("Harmony").tag(AnalysisModel.GradingTarget.harmony)
-                        if model.isSeriesReferenceShown {
-                            Text(model.referenceTitle).tag(AnalysisModel.GradingTarget.series)
-                        }
-                        Text("Separation").tag(AnalysisModel.GradingTarget.separation)
-                        Text("Tints").tag(AnalysisModel.GradingTarget.emphasize)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-                if model.separationFallsBack {
-                    Text(model.separationSubjectMap == nil
-                         ? "Separation needs the subject, which has not been found (yet): the grading aims at the harmony."
-                         : "The subject has no color of its own to stand apart with: the grading aims at the harmony. Lightness can still separate it (a local adjustment in PhotoLab).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if model.gradingFallsBackToTints {
-                    Text("The colors are nearly neutral, so there is nothing to aim at: the grading strengthens the tints the photo already has.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+        VStack(alignment: .leading, spacing: 18) {
+            GradingStep(number: 1, title: "White balance", status: whiteBalanceStatus) {
+                whiteBalanceNote()
+            }
+            GradingStep(number: 2, title: "Tone", status: toneStatus) {
+                toneNote()
+            }
+            GradingStep(number: 3, title: "Balance and skin", status: separationStatus) {
+                separationNote()
                 Toggle("Protect skin tones", isOn: $model.protectSkin)
                     .toggleStyle(.checkbox)
                     .controlSize(.small)
                     .help("Skin-like colors keep their hue: the grading suggestions do not aim them at the harmony. Right-click a color to override this for one color. Sand, wood or a red wall can look like skin to this rule of thumb.")
             }
-            if let profile = model.contrastProfile {
-                VStack(alignment: .leading, spacing: 10) {
-                    IntentionContrastSummary(profile: profile, after: model.afterContrastProfile, aims: model.contrastAims)
-                    if !model.contrastAims.isEmpty {
-                        steeringControls
-                    }
-                }
-            }
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Style").help("A creative direction on top of the harmony: the greys of the shadows and highlights take on a cast of their own, such as warm highlights over cool shadows.")
-                    LivePreviewPicker(selection: model.effectiveStyle,
-                                      items: GradingStyle.allCases.map { ($0, $0.displayName) }) { style, remember in
-                        if remember { model.gradingStyle = style } else { model.withoutRemembering { model.gradingStyle = style } }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .disabled(model.activeSteering != nil)
-                    .help(model.activeSteering != nil ? "Chosen for your intention. Switch off “Steer the grading toward the contrasts of your intention” to choose the style yourself." : "")
-                }
-                do {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Amount:").help("How strongly the grading is applied: 1 as found, 0 none, 3 about twice the Strong of earlier versions. It scales the tints and the style; the HSL hue turns follow below 1 but never turn a color past its target. At 1 the colors come as close to their targets as the grading can bring them: more makes the tint stronger, at the cost of hue accuracy. The suggested tints, the target markers and the PhotoLab values follow.")
-                        HStack(spacing: 8) {
-                            ResettableSlider(value: $model.gradingAmount, range: 0...3, resetValue: 1)
-                                .help("Double-click to return to 1")
-                            Text(model.gradingAmount.formatted(.number.precision(.fractionLength(2))))
-                                .monospacedDigit()
-                                .frame(width: 40, alignment: .trailing)
-                                .onTapGesture(count: 2) { model.gradingAmount = 1 }
-                                .help("Double-click to return to 1")
+            GradingStep(number: 4, title: "Harmony", status: nil) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Aim at").help("Harmony: tint toward the harmony's hues. Series / Reference: toward that palette. Separation: turn the background's colors away from the subject's, so the subject stands apart. Tints: strengthen the faint tint each tonal range already has.")
+                        Picker("Aim at", selection: $model.gradingTarget) {
+                            Text("Harmony").tag(AnalysisModel.GradingTarget.harmony)
+                            if model.isSeriesReferenceShown {
+                                Text(model.referenceTitle).tag(AnalysisModel.GradingTarget.series)
+                            }
+                            Text("Separation").tag(AnalysisModel.GradingTarget.separation)
+                            Text("Tints").tag(AnalysisModel.GradingTarget.emphasize)
                         }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
                     }
-                }
-                if model.activeSteering == nil, let hint = model.intentionStyle {
-                    HStack(spacing: 6) {
-                        Image(systemName: "lightbulb")
+                    if model.separationFallsBack {
+                        Text(model.separationSubjectMap == nil
+                             ? "Separation needs the subject, which has not been found (yet): the grading aims at the harmony."
+                             : "The subject has no color of its own to stand apart with: the grading aims at the harmony. Lightness can still separate it (a local adjustment in PhotoLab).")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("Your intention says “\(hint.words.joined(separator: ", "))”: \(hint.style.displayName.lowercased())?")
-                            .lineLimit(2)
-                        Spacer(minLength: 0)
-                        Button("Use") { model.gradingStyle = hint.style }
-                            .controlSize(.small)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .font(.caption)
-                    .help("Suggested from the words of your Intention; nothing changes until you click Use.")
+                    if model.gradingFallsBackToTints {
+                        Text("The colors are nearly neutral, so there is nothing to aim at: the grading strengthens the tints the photo already has.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-            }
-            Divider()
-            VStack(alignment: .leading, spacing: 12) {
                 if let grading = model.colorGrading {
                     if let fit = grading.fit {
                         let asFound = fit.afterAsFound.flatMap { model.gradingAmount > 1 && fit.after > $0 + 0.5 ? $0 : nil }
@@ -579,13 +541,130 @@ struct ColorWheelView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .help("Weighted mean distance in sRGB hue, from the calibrated model of PhotoLab's Color Grading (see the README).")
                     }
-                    previewControls
                 } else {
                     Text("Needs colors with a harmony.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
+            GradingStep(number: 5, title: "Style", status: nil) {
+                if let profile = model.contrastProfile {
+                    VStack(alignment: .leading, spacing: 10) {
+                        IntentionContrastSummary(profile: profile, after: model.afterContrastProfile, aims: model.contrastAims)
+                        if !model.contrastAims.isEmpty {
+                            steeringControls
+                        }
+                    }
+                }
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Style").help("A creative direction on top of the harmony: the greys of the shadows and highlights take on a cast of their own, such as warm highlights over cool shadows.")
+                        LivePreviewPicker(selection: model.effectiveStyle,
+                                          items: GradingStyle.allCases.map { ($0, $0.displayName) }) { style, remember in
+                            if remember { model.gradingStyle = style } else { model.withoutRemembering { model.gradingStyle = style } }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .disabled(model.activeSteering != nil)
+                        .help(model.activeSteering != nil ? "Chosen for your intention. Switch off “Steer the grading toward the contrasts of your intention” to choose the style yourself." : "")
+                    }
+                    do {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Amount:").help("How strongly the grading is applied: 1 as found, 0 none, 3 about twice the Strong of earlier versions. It scales the tints and the style; the HSL hue turns follow below 1 but never turn a color past its target. At 1 the colors come as close to their targets as the grading can bring them: more makes the tint stronger, at the cost of hue accuracy. The suggested tints, the target markers and the PhotoLab values follow.")
+                            HStack(spacing: 8) {
+                                ResettableSlider(value: $model.gradingAmount, range: 0...3, resetValue: 1)
+                                    .help("Double-click to return to 1")
+                                Text(model.gradingAmount.formatted(.number.precision(.fractionLength(2))))
+                                    .monospacedDigit()
+                                    .frame(width: 40, alignment: .trailing)
+                                    .onTapGesture(count: 2) { model.gradingAmount = 1 }
+                                    .help("Double-click to return to 1")
+                            }
+                        }
+                    }
+                    if model.activeSteering == nil, let hint = model.intentionStyle {
+                        HStack(spacing: 6) {
+                            Image(systemName: "lightbulb")
+                                .foregroundStyle(.secondary)
+                            Text("Your intention says “\(hint.words.joined(separator: ", "))”: \(hint.style.displayName.lowercased())?")
+                                .lineLimit(2)
+                            Spacer(minLength: 0)
+                            Button("Use") { model.gradingStyle = hint.style }
+                                .controlSize(.small)
+                        }
+                        .font(.caption)
+                        .help("Suggested from the words of your Intention; nothing changes until you click Use.")
+                    }
+                }
+                previewControls
+            }
+        }
+    }
+
+    private var whiteBalanceStatus: GradingStepStatus? {
+        switch model.whiteBalance.verdict {
+        case .neutral: .ok
+        case .slight: .warning
+        case .clear: .problem
+        case .unknown: nil
+        }
+    }
+
+    private var toneStatus: GradingStepStatus? {
+        switch model.toneVerdict {
+        case .ok: .ok
+        case .slight: .warning
+        case .clear: .problem
+        case .unknown: nil
+        }
+    }
+
+    private var separationStatus: GradingStepStatus? {
+        switch model.separation?.verdict {
+        case .strong: .ok
+        case .weak: .warning
+        default: nil
+        }
+    }
+
+    /// Clipping, black and white point, and what the grading does to them.
+    @ViewBuilder
+    private func toneNote() -> some View {
+        if let check = model.toneCheck {
+            let soft = model.wantsSoftTones
+            VStack(alignment: .leading, spacing: 6) {
+                Text(check.summary.prefix(1).uppercased() + check.summary.dropFirst()
+                     + (soft ? " · soft tones fit your intention" : ""))
+                    .foregroundStyle(.secondary)
+                ForEach(check.findings(softTones: soft), id: \.kind) { finding in
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(finding.severity == .clear ? .red : .orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(finding.text)
+                            Text(finding.advice).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if check.findings(softTones: soft).isEmpty {
+                    Text("Nothing clipped, a real black and white: the tones are ready for color.")
+                        .foregroundStyle(.secondary)
+                }
+                if let after = model.afterToneCheck,
+                   abs(after.blackPoint - check.blackPoint) >= 0.005 || abs(after.whitePoint - check.whitePoint) >= 0.005
+                    || abs(after.blown - check.blown) >= 0.0005 || abs(after.crushed - check.crushed) >= 0.0005 {
+                    let worse = after.verdict(softTones: soft) == .clear && check.verdict(softTones: soft) != .clear
+                        || after.blown > check.blown + 0.005 || after.crushed > check.crushed + 0.01
+                    Text(String(format: "%@: black %.0f → %.0f · white %.0f → %.0f · blown %.1f %% → %.1f %% · crushed %.1f %% → %.1f %%",
+                                model.afterLabel, check.blackPoint * 100, after.blackPoint * 100, check.whitePoint * 100,
+                                after.whitePoint * 100, check.blown * 100, after.blown * 100, check.crushed * 100, after.crushed * 100))
+                        .foregroundStyle(worse ? Color.red : Color.secondary)
+                }
+            }
+            .font(.caption)
+            .fixedSize(horizontal: false, vertical: true)
+            .help("Measured on every other pixel of the photo: a channel at 254.5 of 255 or more is clipped at white, at 0.5 or less at black; black and white point are the OKLab lightness of the darkest and lightest 0.5 %. A grade cannot bring back what is clipped, so tone comes before color. A misty or low-key photo has no black or white for a reason: these are hints.")
+        } else {
+            Text("Measuring…").font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -881,6 +960,12 @@ struct ColorWheelView: View {
             .font(.caption)
             .fixedSize(horizontal: false, vertical: true)
             .help("Measured on the nearly neutral pixels (OKLab chroma below 0.035). A white wall at sunset is orange for a reason: this is a hint, not a verdict.")
+        } else {
+            Text(check.verdict == .neutral
+                 ? "The neutral areas are neutral (\(Int((check.neutralShare * 100).rounded())) % of the photo)."
+                 : "Too few neutral areas to judge the white balance.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -1300,3 +1385,40 @@ private struct ContrastBar: View {
         }
     }
 }
+
+/// One step of the Grading tab: a number, a title, how it stands, and what belongs to it.
+struct GradingStep<Content: View>: View {
+    typealias Status = GradingStepStatus
+
+    let number: Int
+    let title: String
+    let status: Status?
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("\(number)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(Color.accentColor))
+                Text(title).font(.subheadline.weight(.semibold))
+                Spacer(minLength: 0)
+                switch status {
+                case .ok: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                case .warning: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                case .problem: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                case nil: EmptyView()
+                }
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                content
+            }
+            .padding(.leading, 26)
+        }
+    }
+}
+
+/// How a step of the Grading tab stands.
+enum GradingStepStatus { case ok, warning, problem }

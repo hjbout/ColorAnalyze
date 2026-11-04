@@ -151,6 +151,35 @@ public struct ColorExport: Codable, Sendable, Equatable {
     public var contrasts: [String: Contrast]?
     /// What was chosen for the intention's contrasts, when the grading is steered toward them.
     public var steering: Steering?
+    /// Clipping, black and white point.
+    public var tone: Tone?
+
+    public struct Tone: Codable, Sendable, Equatable {
+        public var verdict: String
+        /// Percent of the pixels clipped at white / black per channel (red, green, blue), and in all three.
+        public var clippedHighPercent: [Double]
+        public var clippedLowPercent: [Double]
+        public var blownPercent: Double
+        public var crushedPercent: Double
+        /// OKLab lightness × 100 of the darkest and lightest 0.5 %, and the mean.
+        public var blackPoint: Double
+        public var whitePoint: Double
+        public var meanLightness: Double
+        public var findings: [String]
+
+        public init(_ check: ToneCheck, softTones: Bool = false) {
+            func r(_ v: Double) -> Double { (v * 1000).rounded() / 10 }
+            verdict = check.verdict(softTones: softTones).rawValue
+            clippedHighPercent = check.clippedHigh.map(r)
+            clippedLowPercent = check.clippedLow.map(r)
+            blownPercent = r(check.blown)
+            crushedPercent = r(check.crushed)
+            blackPoint = r(check.blackPoint)
+            whitePoint = r(check.whitePoint)
+            meanLightness = r(check.meanLightness)
+            findings = check.findings(softTones: softTones).map(\.text)
+        }
+    }
 
     public struct Steering: Codable, Sendable, Equatable {
         public var style: String
@@ -255,7 +284,7 @@ public struct ColorExport: Codable, Sendable, Equatable {
     public init(photo: String, graded: String? = nil, exportedAt: Date = Date(), weighting: String? = nil,
                 intention: String? = nil, harmony: Harmony? = nil, whiteBalance: WhiteBalance? = nil,
                 separation: Separation? = nil, contrasts: [String: Contrast]? = nil, steering: Steering? = nil,
-                colors: [ColorRecord]) {
+                tone: Tone? = nil, colors: [ColorRecord]) {
         self.photo = photo
         self.graded = graded
         self.exportedAt = exportedAt
@@ -266,6 +295,7 @@ public struct ColorExport: Codable, Sendable, Equatable {
         self.separation = separation
         self.contrasts = contrasts
         self.steering = steering
+        self.tone = tone
         self.colors = colors
     }
 

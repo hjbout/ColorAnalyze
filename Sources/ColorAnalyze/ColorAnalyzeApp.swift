@@ -388,6 +388,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await model.prepareSubject()
                 await model.refreshSeparation()
                 await model.refreshContrastProfile()
+                await model.refreshToneCheck()
                 await model.refreshSteering()
             }
             // Problems that the windows show in an alert (a subject that was not found, photos that could not be read)

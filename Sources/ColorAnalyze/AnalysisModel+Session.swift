@@ -167,6 +167,7 @@ extension AnalysisModel {
             contrasts: contrastProfile.map { ColorExport.Contrast.entries($0, after: afterImage == nil ? nil : afterContrastProfile,
                                                                           aims: contrastAims.mapValues(\.aim)) },
             steering: activeSteering.map { ColorExport.Steering($0) },
+            tone: toneCheck.map { ColorExport.Tone($0, softTones: wantsSoftTones) },
             colors: records
         )
     }

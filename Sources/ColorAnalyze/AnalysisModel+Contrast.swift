@@ -40,4 +40,36 @@ extension AnalysisModel {
         afterContrastProfile = result.1
         contrastKey = key
     }
+
+    // MARK: Tone check
+
+    /// Measures clipping, black and white point of the photo (once) and of the graded version or the prediction, from every
+    /// other pixel of the sampling copy (small clipped areas get lost in the analysis copy).
+    func refreshToneCheck() async {
+        guard let key = contrastRequestKey, key != toneKey, let image else { return }
+        let before = toneCheck
+        let source = image.sampling
+        let graded = afterImage?.sampling
+        let plan = afterImage == nil && isPreviewActive ? prediction()?.plan : nil
+        let result = await Task.detached(priority: .userInitiated) {
+            let photo = before ?? ToneCheck.check(source)
+            var after: ToneCheck?
+            if let graded {
+                after = ToneCheck.check(graded)
+            } else if let plan {
+                after = ToneCheck.check(source) { plan.applyLinear(linear: $0, lab: $1) }
+            }
+            return (photo, after)
+        }.value
+        guard !Task.isCancelled, contrastRequestKey == key else { return }
+        toneCheck = result.0
+        afterToneCheck = result.1
+        toneKey = key
+    }
+
+    /// True when the intention asks for soft tones (a low light–dark contrast): a lifted black is then no fault.
+    var wantsSoftTones: Bool { contrastAims[.lightDark]?.aim == .low }
+
+    /// The tone check's verdict for this photo and intention; unknown until it has run.
+    var toneVerdict: ToneCheck.Verdict { toneCheck?.verdict(softTones: wantsSoftTones) ?? .unknown }
 }
