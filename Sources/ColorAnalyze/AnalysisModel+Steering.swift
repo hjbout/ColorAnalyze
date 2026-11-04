@@ -6,15 +6,19 @@ extension AnalysisModel {
     // MARK: Steering toward the intention's contrasts
 
     /// The steering in use: when it is switched on and the intention asks for contrasts. The last result stays in use
-    /// while a new one is being found, so the suggestion does not flicker.
+    /// while a new one is being found, so the suggestion does not flicker. It is found at amount 1 and follows the amount
+    /// like the rest of the grading, so at 0 nothing is left of it.
     var activeSteering: ContrastSteering.Result? {
-        steerByIntention && !contrastAims.isEmpty ? steering : nil
+        guard steerByIntention, !contrastAims.isEmpty, var result = steering else { return nil }
+        result.option = result.option.scaled(by: gradingAmount)
+        return result
     }
 
     /// The style the grading uses: the one chosen for the intention, or the one chosen by hand.
     var effectiveStyle: GradingStyle { activeSteering?.option.style ?? gradingStyle }
 
-    /// What the steering depends on: everything the suggestion depends on except the style, which it chooses, and the aims.
+    /// What the steering depends on: everything the suggestion depends on except the style, which it chooses, and the amount,
+    /// which scales what it chose; and the aims.
     var steeringRequestKey: Int? {
         let aims = contrastAims
         guard steerByIntention, !aims.isEmpty, let image else { return nil }
@@ -23,7 +27,6 @@ extension AnalysisModel {
         hasher.combine(markersKey)
         hasher.combine(harmonyChoice?.rawValue)
         hasher.combine(harmonyRotationOverride)
-        hasher.combine(gradingAmount)
         hasher.combine(gradingTarget.rawValue)
         for (kind, aim) in aims.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             hasher.combine(kind.rawValue)
@@ -41,6 +44,7 @@ extension AnalysisModel {
         for style in GradingStyle.allCases {
             var setup = currentChoices
             setup.style = style
+            setup.amount = 1
             guard let grading = computeColorGrading(for: setup) else { continue }
             candidates.append(.init(style: style, settings: gradeSettings(for: setup, grading: grading),
                                     hueFitAfter: grading.fit?.after))

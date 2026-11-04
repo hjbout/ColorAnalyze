@@ -298,6 +298,9 @@ struct ColorWheelView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if tab == .grading { amountBar }
+            }
         }
         .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -574,20 +577,6 @@ struct ColorWheelView: View {
                         .disabled(model.activeSteering != nil)
                         .help(model.activeSteering != nil ? "Chosen for your intention. Switch off “Steer the grading toward the contrasts of your intention” to choose the style yourself." : "")
                     }
-                    do {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Amount:").help("How strongly the grading is applied: 1 as found, 0 none, 3 about twice the Strong of earlier versions. It scales the tints and the style; the HSL hue turns follow below 1 but never turn a color past its target. At 1 the colors come as close to their targets as the grading can bring them: more makes the tint stronger, at the cost of hue accuracy. The suggested tints, the target markers and the PhotoLab values follow.")
-                            HStack(spacing: 8) {
-                                ResettableSlider(value: $model.gradingAmount, range: 0...3, resetValue: 1)
-                                    .help("Double-click to return to 1")
-                                Text(model.gradingAmount.formatted(.number.precision(.fractionLength(2))))
-                                    .monospacedDigit()
-                                    .frame(width: 40, alignment: .trailing)
-                                    .onTapGesture(count: 2) { model.gradingAmount = 1 }
-                                    .help("Double-click to return to 1")
-                            }
-                        }
-                    }
                     if model.activeSteering == nil, let hint = model.intentionStyle {
                         HStack(spacing: 6) {
                             Image(systemName: "lightbulb")
@@ -605,6 +594,26 @@ struct ColorWheelView: View {
                 previewControls
             }
         }
+    }
+
+    /// The amount of the grading. It stays under the scrolling steps: moving it changes the notes in those steps, and with
+    /// them the height of everything above, so a slider among them would slide away from under the mouse.
+    private var amountBar: some View {
+        @Bindable var model = model
+        return HStack(spacing: 8) {
+            Text("Amount:").help("How strongly the grading is applied: 1 as found, 0 none, 3 about twice the Strong of earlier versions. It scales the tints, the style and what the steering chose; the HSL hue turns follow below 1 but never turn a color past its target. At 1 the colors come as close to their targets as the grading can bring them: more makes the tint stronger, at the cost of hue accuracy. The suggested tints, the target markers and the PhotoLab values follow.")
+            ResettableSlider(value: $model.gradingAmount, range: 0...3, resetValue: 1)
+                .help("Double-click to return to 1")
+            Text(model.gradingAmount.formatted(.number.precision(.fractionLength(2))))
+                .monospacedDigit()
+                .frame(width: 40, alignment: .trailing)
+                .onTapGesture(count: 2) { model.gradingAmount = 1 }
+                .help("Double-click to return to 1")
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
     }
 
     private var whiteBalanceStatus: GradingStepStatus? {
@@ -878,7 +887,7 @@ struct ColorWheelView: View {
                 let unmet = kinds.filter { kind in
                     model.contrastAims[kind].map { ContrastProfile.status(of: steering.after[kind] ?? 0, toward: $0.aim) != .met } ?? false
                 }
-                Text("Predicted: " + kinds.map { "\($0.displayName) \(Int(((steering.before[$0] ?? 0) * 100).rounded())) → \(Int(((steering.after[$0] ?? 0) * 100).rounded()))" }.joined(separator: " · "))
+                Text((model.gradingAmount == 1 ? "Predicted: " : "Predicted at amount 1: ") + kinds.map { "\($0.displayName) \(Int(((steering.before[$0] ?? 0) * 100).rounded())) → \(Int(((steering.after[$0] ?? 0) * 100).rounded()))" }.joined(separator: " · "))
                     .foregroundStyle(.secondary)
                 if !unmet.isEmpty {
                     Text(unmet.map(\.displayName).joined(separator: ", ") + (unmet.count == 1 ? " is" : " are")

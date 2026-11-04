@@ -2655,6 +2655,27 @@ import Testing
 }
 
 @Suite struct ContrastSteeringTests {
+    @Test func theSteeringFollowsTheAmount() {
+        let option = ContrastSteering.Option(style: .warmOverall, saturation: [.red: -30, .blue: 20],
+                                             tone: .init(blacks: -60, shadows: -30, highlights: 45, whites: 30, contrast: 60))
+        let none = option.scaled(by: 0)
+        #expect(none.tone.isNeutral)
+        #expect(none.saturation.isEmpty)
+        #expect(none.style == .warmOverall)
+        #expect(option.scaled(by: 1) == option)
+        let half = option.scaled(by: 0.5)
+        #expect(half.tone.blacks == -30)
+        #expect(half.saturation[.red] == -15)
+        let most = option.scaled(by: 3)
+        #expect(most.tone.blacks == -100)
+        #expect(most.tone.contrast == 100)
+        // At 0 the steering leaves a pixel as it is.
+        let lab = SRGBColor(r: 0.6, g: 0.4, b: 0.3).oklab
+        var settings = none.tone.applied(to: GradePreviewSettings())
+        settings.hslSaturation = none.saturation
+        #expect(simd_distance(GradePreview.Plan(settings).apply(lab), lab) < 0.001)
+    }
+
     private func pixels(_ parts: [(SRGBColor, Int)]) -> [SIMD3<Float>] {
         parts.flatMap { [SIMD3<Float>](repeating: $0.0.oklab, count: $0.1) }
     }

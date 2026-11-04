@@ -187,7 +187,7 @@ public struct ColorExport: Codable, Sendable, Equatable {
         public var hslSaturation: [String: Int]
         /// Light palette sliders added for the intention (blacks, shadows, highlights, whites, contrast), those not at 0.
         public var lightPalette: [String: Int]
-        /// Strengths of the asked contrasts (0–100) in the photo and as predicted with the steering.
+        /// Strengths of the asked contrasts (0–100) in the photo and as predicted with the steering at amount 1.
         public var before: [String: Int]
         public var after: [String: Int]
 

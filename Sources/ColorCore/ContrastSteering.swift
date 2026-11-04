@@ -22,6 +22,14 @@ public enum ContrastSteering {
             self.saturation = saturation
             self.tone = tone
         }
+
+        /// The levers at `amount` times their strength, as whole slider values: 0 changes nothing, 1 is the option as chosen.
+        public func scaled(by amount: Double) -> Option {
+            var option = self
+            option.tone = tone.scaled(by: amount)
+            option.saturation = saturation.mapValues { Tone.slider($0 * amount) }.filter { $0.value != 0 }
+            return option
+        }
     }
 
     /// Sliders of PhotoLab's Light palette (-100...100).
@@ -49,6 +57,14 @@ public enum ContrastSteering {
             s.toneWhites = clamp(s.toneWhites + whites)
             s.contrast = clamp(s.contrast + contrast)
             return s
+        }
+
+        static func slider(_ value: Double) -> Double { max(-100, min(100, value.rounded())) }
+
+        func scaled(by amount: Double) -> Tone {
+            Tone(blacks: Self.slider(blacks * amount), shadows: Self.slider(shadows * amount),
+                 highlights: Self.slider(highlights * amount), whites: Self.slider(whites * amount),
+                 contrast: Self.slider(contrast * amount))
         }
 
         /// The S-curve that stretches the tonal range, as measured in `calibration/exports/T-scurve`, times `k`.
@@ -85,7 +101,7 @@ public enum ContrastSteering {
 
     public struct Result: Sendable, Equatable {
         public var option: Option
-        /// Strengths of the asked contrasts in the photo, and as predicted with the option.
+        /// Strengths of the asked contrasts in the photo, and as predicted with the option as chosen (amount 1).
         public var before: [ContrastProfile.Kind: Double]
         public var after: [ContrastProfile.Kind: Double]
     }
