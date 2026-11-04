@@ -2,7 +2,7 @@ import ColorCore
 import SwiftUI
 
 /// A note about the feeling a photo or series should get, with a few mood words to click.
-/// Shown on the Grading tab, next to the style it can suggest.
+/// Shown at the top of the Harmony tab, before the harmony is chosen.
 struct IntentionField: View {
     let title: String
     let placeholder: String

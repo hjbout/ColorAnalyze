@@ -363,6 +363,13 @@ struct ColorWheelView: View {
     private func harmonyTab(fit: HarmonyFit?) -> some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 22) {
+            whiteBalanceNote()
+            IntentionField(title: "Intention", placeholder: "What should this photo feel like?",
+                           text: $model.intention)
+            if let profile = model.contrastProfile {
+                ContrastProfileView(profile: profile, after: model.afterContrastProfile, afterLabel: model.afterLabel,
+                                    fit: fit, afterFit: model.afterHarmony, aims: model.contrastAims)
+            }
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Text("Wheel").font(.subheadline).help("RGB is the ordinary sRGB hue circle. RYB is the artist's red–yellow–blue wheel, where the classic complements are red–green, orange–blue and yellow–violet. DxO is PhotoLab's own hue axis: the angles are the Hue numbers of its Color Grading and HSL wheels. OKLCH is a perceptual wheel: equal angles look like equal color steps.\n\nOn the DxO, RYB and OKLCH wheels the harmonies are computed in that wheel's terms, but hue shifts and target hues in the list stay in sRGB degrees.")
@@ -385,8 +392,6 @@ struct ColorWheelView: View {
                         .help("Reference band for skin tones (sRGB hue ≈ 13°–37°). Skin-like colors in the list are marked whether or not the line is shown.")
                     Toggle("Pixel scope", isOn: $model.showPixelScope)
                         .help("Shows every pixel of the photo on the wheel as a cloud, like a vectorscope: bright where much of the photo has that hue and saturation. With a graded version or the preview it shows the photo after grading (V).")
-                    Toggle("Protect skin tones", isOn: $model.protectSkin)
-                        .help("Skin-like colors keep their hue: the grading suggestions do not aim them at the harmony. Right-click a color to override this for one color. Sand, wood or a red wall can look like skin to this rule of thumb.")
                     Spacer(minLength: 0)
                 }
                 .toggleStyle(.checkbox)
@@ -436,10 +441,6 @@ struct ColorWheelView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            if let profile = model.contrastProfile {
-                ContrastProfileView(profile: profile, after: model.afterContrastProfile, afterLabel: model.afterLabel,
-                                    fit: fit, afterFit: model.afterHarmony, aims: model.contrastAims)
-            }
             Divider()
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
@@ -481,15 +482,6 @@ struct ColorWheelView: View {
     private var gradingTab: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 22) {
-            IntentionField(title: "Intention", placeholder: "What should this photo feel like?",
-                           text: $model.intention)
-            if let profile = model.contrastProfile {
-                IntentionContrastSummary(profile: profile, after: model.afterContrastProfile, aims: model.contrastAims)
-                if !model.contrastAims.isEmpty {
-                    steeringControls
-                }
-            }
-            whiteBalanceNote()
             separationNote()
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -519,6 +511,18 @@ struct ColorWheelView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                Toggle("Protect skin tones", isOn: $model.protectSkin)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                    .help("Skin-like colors keep their hue: the grading suggestions do not aim them at the harmony. Right-click a color to override this for one color. Sand, wood or a red wall can look like skin to this rule of thumb.")
+            }
+            if let profile = model.contrastProfile {
+                VStack(alignment: .leading, spacing: 10) {
+                    IntentionContrastSummary(profile: profile, after: model.afterContrastProfile, aims: model.contrastAims)
+                    if !model.contrastAims.isEmpty {
+                        steeringControls
+                    }
+                }
             }
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -529,7 +533,7 @@ struct ColorWheelView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .disabled(model.activeSteering != nil)
-                    .help(model.activeSteering != nil ? "Chosen for your intention. Switch off “Steer the grading toward these contrasts” to choose the style yourself." : "")
+                    .help(model.activeSteering != nil ? "Chosen for your intention. Switch off “Steer the grading toward the contrasts of your intention” to choose the style yourself." : "")
                 }
                 do {
                     VStack(alignment: .leading, spacing: 4) {
@@ -672,30 +676,6 @@ struct ColorWheelView: View {
                 }
                 Divider()
                 hslSection
-                if let saturation = model.activeSteering?.option.saturation, !saturation.isEmpty {
-                    Divider()
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("HSL: Saturation per channel")
-                            .font(.subheadline.weight(.semibold))
-                        ForEach(saturation.sorted { $0.key.rawValue < $1.key.rawValue }, id: \.key) { channel, value in
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(SRGBColor.fromHSB(h: channel.centerHue ?? 0, s: 0.75, b: 0.95).swiftUIColor)
-                                    .frame(width: 12, height: 12)
-                                Text(channel.displayName)
-                                    .frame(width: 62, alignment: .leading)
-                                Text("Saturation \(signedRounded(value, unit: ""))")
-                                    .monospacedDigit()
-                                Spacer(minLength: 0)
-                            }
-                            .font(.caption)
-                        }
-                        Text("Chosen for the contrasts your intention asks for. Set them in PhotoLab's HSL palette; a Color Grading preset cannot carry them.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
             }
         }
     }
@@ -715,49 +695,68 @@ struct ColorWheelView: View {
         .font(.caption)
     }
 
-    /// The Hue handle of each HSL channel in PhotoLab, in degrees on PhotoLab's own ring.
+    /// The HSL palette of PhotoLab, one row per channel: the Hue handle (in degrees on PhotoLab's own ring)
+    /// and, when the intention is steered, the Saturation.
     @ViewBuilder
     private var hslSection: some View {
-        let channels = model.hslSuggestions
+        let hue = model.effectiveGradingTarget == .emphasize ? [] : model.hslSuggestions
+        let saturation = model.activeSteering?.option.saturation ?? [:]
+        let channels = DxOChannel.allCases.filter { channel in
+            hue.contains { $0.channel == channel } || saturation[channel] != nil
+        }
         VStack(alignment: .leading, spacing: 8) {
-            Text("HSL: Hue per channel")
+            Text("HSL: Hue and Saturation per channel")
                 .font(.subheadline.weight(.semibold))
+                .help("Hue: degrees on PhotoLab's own hue ring, converted from the sRGB hue shifts in the list; accurate to a few degrees.\n\nTurn the Hue handle on the outer ring of PhotoLab's HSL wheel by this many degrees, toward the color named after the arrow (red → orange → yellow → green → cyan → blue → purple → magenta is a + turn, counter-clockwise on the ring). Saturation is chosen for the contrasts your intention asks for; Luminance you set by eye.")
             if model.effectiveGradingTarget == .emphasize {
                 Text("Aim at Harmony" + (model.isSeriesReferenceShown ? " or \(model.referenceTitle)" : "") + " in the Grading tab: there is no hue to turn toward while only the existing tints are strengthened.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if channels.isEmpty {
+            } else if hue.isEmpty {
                 Text("No channel needs a hue shift.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else {
-                ForEach(channels, id: \.channel) { suggestion in
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(SRGBColor.fromHSB(h: suggestion.channel.centerHue ?? 0, s: 0.75, b: 0.95).swiftUIColor)
-                            .frame(width: 12, height: 12)
-                        Text(suggestion.channel.displayName)
-                            .frame(width: 62, alignment: .leading)
+            }
+            ForEach(channels, id: \.self) { channel in
+                let suggestion = hue.first { $0.channel == channel }
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(SRGBColor.fromHSB(h: channel.centerHue ?? 0, s: 0.75, b: 0.95).swiftUIColor)
+                        .frame(width: 12, height: 12)
+                    Text(channel.displayName)
+                        .frame(width: 62, alignment: .leading)
+                    if let suggestion {
                         Text("Hue \(signedRounded(suggestion.hueShift, unit: "°"))"
-                             + (suggestion.channel.direction(of: suggestion.hueShift).map { " → \($0.displayName.lowercased())" } ?? ""))
+                             + (channel.direction(of: suggestion.hueShift).map { " → \($0.displayName.lowercased())" } ?? ""))
                             .monospacedDigit()
+                    }
+                    if let value = saturation[channel] {
+                        Text("Saturation \(signedRounded(value, unit: ""))")
+                            .monospacedDigit()
+                    }
+                    if let suggestion {
                         Text("colors " + suggestion.colors.map(String.init).joined(separator: ", "))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
-                        Spacer(minLength: 0)
                     }
-                    .font(.caption)
-                    if suggestion.isMixed {
-                        Text("\(suggestion.channel.displayName): these colors want shifts from \(signedRounded(suggestion.range.lowerBound, unit: "°")) to \(signedRounded(suggestion.range.upperBound, unit: "°")); one handle cannot serve all of them.")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    Spacer(minLength: 0)
+                }
+                .font(.caption)
+                if let suggestion, suggestion.isMixed {
+                    Text("\(channel.displayName): these colors want shifts from \(signedRounded(suggestion.range.lowerBound, unit: "°")) to \(signedRounded(suggestion.range.upperBound, unit: "°")); one handle cannot serve all of them.")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            if !saturation.isEmpty {
+                Text("Saturation is chosen for the contrasts your intention asks for. Set it in PhotoLab's HSL palette; a Color Grading preset cannot carry it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .help("Degrees on PhotoLab's own hue ring, converted from the sRGB hue shifts in the list; accurate to a few degrees.\n\nTurn the Hue handle on the outer ring of PhotoLab's HSL wheel by this many degrees, toward the color named after the arrow (red → orange → yellow → green → cyan → blue → purple → magenta is a + turn, counter-clockwise on the ring). Saturation and Luminance you set by eye.")
     }
 
     private func reasonText(_ reason: ColorGradingSuggestion.Reason) -> String {
@@ -774,7 +773,7 @@ struct ColorWheelView: View {
     private var steeringControls: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 4) {
-            Toggle("Steer the grading toward these contrasts", isOn: $model.steerByIntention)
+            Toggle("Steer the grading toward the contrasts of your intention", isOn: $model.steerByIntention)
                 .toggleStyle(.checkbox)
                 .controlSize(.small)
                 .help("Chooses the style, an HSL Saturation per channel and, for light–dark, an S-curve or Contrast in the Light palette so that the predicted contrasts come as close as possible to what your intention asks, with the least change. Off: you choose the style yourself and the contrasts are only shown.")

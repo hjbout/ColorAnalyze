@@ -171,7 +171,7 @@ A harmony template only says how the hues are ordered on the wheel. How a photo 
 - **Extension** (Itten's contrast of quantity): a small area of strong color against a large one (*orange on 5 % of the photo, 2.1× as saturated*). The patch must cover 0.3–12 % of the photo.
 - **Hue order**: the fit of the harmony template, as one signal among the others (100 on target, 0 at ±30° or more).
 
-**From the intention.** Mood words in the *Intention* (English and Dutch, matched on the beginning of the word) say which way contrasts should go. Each asked contrast gets an arrow in the Harmony tab, **↑** for high and **↓** for low. The arrow is green when the photo is there (60 and up for high, 35 and below for low), orange half way, and red the other way. The Grading tab repeats them in one line under the intention.
+**From the intention.** Mood words in the *Intention* (English and Dutch, matched on the beginning of the word) say which way contrasts should go. Each asked contrast gets an arrow in the Harmony tab, **↑** for high and **↓** for low. The arrow is green when the photo is there (60 and up for high, 35 and below for low), orange half way, and red the other way. The Grading tab repeats them in one line, next to the steering.
 
 - *calm/rustig*: hue, saturation, complementary and light–dark low.
 - *soft/zacht/mist*: light–dark and saturation low.
@@ -185,7 +185,7 @@ A harmony template only says how the hues are ordered on the wheel. How a photo 
 
 A contrast that one word wants high and another low gets no arrow. Temperature words (*warm*, *koel*) are left to the style.
 
-**Steer the grading toward these contrasts** is an optional checkbox under the arrows in the *Grading* tab (off by default, remembered). When it is on, the app tries every style with four levels of HSL Saturation (none, ±10, ±20, ±30) and keeps the combination whose predicted contrasts come closest to the intention, with the least change.
+**Steer the grading toward the contrasts of your intention** is an optional checkbox under the arrows in the *Grading* tab (off by default, remembered). When it is on, the app tries every style with four levels of HSL Saturation (none, ±10, ±20, ±30) and keeps the combination whose predicted contrasts come closest to the intention, with the least change.
 
 - **How it judges.** The prediction is the calibrated model of PhotoLab applied to about 4,000 pixels. A style that costs hue accuracy, any saturation change and any style at all count slightly against a combination, so a photo that already meets the intention stays *Neutral*.
 - **How the HSL Saturation is chosen.** It goes down on all channels for a low saturation, up for a high one, down on all channels but the accent's for a strong extension, and down on the accent's channel for a weak one. Channels with protected colors (skin, colors locked by hand) are left alone.
