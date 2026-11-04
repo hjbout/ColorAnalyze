@@ -164,19 +164,19 @@ struct ColorWheelView: View {
                     }
 
                     if let fit {
-                        HarmonyOverlay(fit: fit, markers: model.gradingMarkers, center: center, radius: radius, showsShifts: showColors && !original)
+                        HarmonyOverlay(fit: fit, markers: model.markers, center: center, radius: radius, showsShifts: showColors && !original)
                             .allowsHitTesting(false)
                         rotationHandle(fit: fit, center: center, radius: radius)
                     }
 
                     if showColors && showTargets {
-                        AfterTrails(markers: model.gradingMarkers, afterColors: model.markers.map { model.afterColor(for: $0) },
+                        AfterTrails(markers: model.markers, afterColors: model.markers.map { model.afterColor(for: $0) },
                                     space: model.hueSpace, center: center, radius: radius)
                             .allowsHitTesting(false)
                     }
 
                     // The selected marker is linked to the series palette color it is closest to.
-                    if let id = model.selectedMarkerID, let marker = model.gradingMarkers.first(where: { $0.id == id }),
+                    if let id = model.selectedMarkerID, let marker = model.markers.first(where: { $0.id == id }),
                        let match = model.seriesMatch(for: marker) {
                         let from = marker.color.hsb, to = model.seriesPalette[match.index].color.hsb
                         Path { path in
@@ -190,7 +190,7 @@ struct ColorWheelView: View {
                         .allowsHitTesting(false)
                     }
 
-                    ForEach(Array(model.gradingMarkers.enumerated()), id: \.element.id) { index, marker in
+                    ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
                         let hsb = marker.color.hsb
                         if showColors {
                         MarkerBadge(number: index + 1, color: marker.color,
@@ -209,7 +209,7 @@ struct ColorWheelView: View {
                     }
 
                     if showTargets {
-                        ForEach(Array(model.gradingMarkers.enumerated()), id: \.element.id) { index, marker in
+                        ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
                             if let after = model.afterColor(for: marker) {
                                 let hsb = after.hsb
                                 let editable = model.canEditTargets && marker.color.chroma >= DxOMapping.neutralChroma
@@ -275,7 +275,7 @@ struct ColorWheelView: View {
                 }
             }
 
-            LightnessStrip(markers: model.gradingMarkers, selectedID: model.selectedMarkerID,
+            LightnessStrip(markers: model.markers, selectedID: model.selectedMarkerID,
                            afterColors: model.markers.map { model.afterColor(for: $0) })
                 .padding(.horizontal, 20)
 
@@ -692,14 +692,6 @@ struct ColorWheelView: View {
     private var photoLabTab: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 22) {
-            if let correction = model.whiteBalanceCorrection {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("White Balance")
-                        .font(.subheadline.weight(.semibold))
-                        .help("Set first: the neutral areas of the photo have a cast (see step 1 of the Grading tab).")
-                    whiteBalanceValues(correction)
-                }
-            }
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Color Grading")
@@ -961,21 +953,13 @@ struct ColorWheelView: View {
                     .foregroundStyle(check.verdict == .clear ? .red : .orange)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(check.verdict == .clear ? "Clear" : "Slight") \(direction) cast in the neutral areas (\(Int((check.neutralShare * 100).rounded())) % of the photo).")
-                    Text("If they should be neutral, correct white balance first: \(advice).")
+                    Text("If they should be neutral, correct white balance first: \(advice). In PhotoLab, click the White Balance eyedropper on something that should be grey, then analyze the exported result.")
                         .foregroundStyle(.secondary)
                 }
             }
             .font(.caption)
             .fixedSize(horizontal: false, vertical: true)
             .help("Measured on the nearly neutral pixels (OKLab chroma below 0.035). A white wall at sunset is orange for a reason: this is a hint, not a verdict.")
-            if let correction = model.whiteBalanceCorrection {
-                whiteBalanceValues(correction)
-                @Bindable var model = model
-                Toggle("Show in the preview", isOn: $model.previewWhiteBalance)
-                    .toggleStyle(.checkbox)
-                    .controlSize(.small)
-                    .help("PhotoLab corrects the white balance before it grades, so with this on the whole suggestion (harmony, Color Grading, HSL) is worked out on the corrected colors, and the preview and the predicted colors show the result of both. Set the White Balance first in PhotoLab, then the rest. Off: everything is based on the colors as they are now.")
-            }
         } else {
             Text(check.verdict == .neutral
                  ? "The neutral areas are neutral (\(Int((check.neutralShare * 100).rounded())) % of the photo)."
@@ -984,46 +968,6 @@ struct ColorWheelView: View {
                 .foregroundStyle(.secondary)
         }
     }
-}
-
-extension ColorWheelView {
-    /// The White Balance values that neutralize the cast, from the Temperature PhotoLab shows now (typed in, or the As Shot
-    /// value of a RAW).
-    @ViewBuilder
-    func whiteBalanceValues(_ correction: WhiteBalanceCorrection) -> some View {
-        @Bindable var model = model
-        let now = model.currentTemperature
-        let target = correction.temperature(from: now)
-        let change = Int((target - now).rounded())
-        let tint = Int(correction.tintShift.rounded())
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Text("Temperature")
-                    .frame(width: 78, alignment: .leading)
-                TextField("K", value: $model.currentTemperature, format: .number.grouping(.never))
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 58)
-                    .help("The Temperature PhotoLab shows for this photo now (Kelvin): type it in, the new value is relative to it. macOS reads another As Shot value from a RAW than PhotoLab does, so it is not filled in for you.")
-                Text(verbatim: "K  →  \(Int(target.rounded())) K  (\(change >= 0 ? "+" : "−")\(abs(change)))")
-                    .monospacedDigit()
-            }
-            HStack(spacing: 4) {
-                Text("Tint")
-                    .frame(width: 78, alignment: .leading)
-                Text(abs(tint) < 1 ? "leave as it is" : "\(Self.signed(tint)) from the current value (\(tint > 0 ? "toward magenta" : "toward green"))")
-                    .monospacedDigit()
-            }
-            Text("For a RAW in PhotoLab (White Balance in the Color palette). A JPEG or TIFF opened in PhotoLab has only a relative Temperature slider and no Tint: use the eyedropper on a grey there.")
-                .foregroundStyle(.secondary)
-        }
-        .font(.caption)
-        .fixedSize(horizontal: false, vertical: true)
-        .help("The cast's color placed on the Planckian locus: its distance from D65 along the locus (\(String(format: "%.0f", correction.miredShift)) mired) is how far the Temperature is off, its distance off the locus how far the Tint is off. Scaled with what was measured in PhotoLab 10.1 on one RAW (0.86 mired per mired, 0.84 uv per Tint step), so these are a starting point: check the grey areas in PhotoLab.")
-    }
-
-    static func signed(_ value: Int) -> String { value > 0 ? "+\(value)" : value < 0 ? "−\(abs(value))" : "0" }
 }
 
 /// The skin tone reference: a line at the reference hue inside a faint wedge covering the band

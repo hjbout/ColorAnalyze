@@ -94,8 +94,6 @@ extension AnalysisModel {
             hasher.combine(marker.targetHue)
             hasher.combine(marker.referenceIndex)
         }
-        hasher.combine(previewedWhiteBalance?.miredShift)
-        hasher.combine(previewedWhiteBalance?.tintShift)
         hasher.combine(hueSpace.rawValue)
         hasher.combine(harmonySector)
         hasher.combine(isSeriesReferenceShown)
@@ -107,7 +105,7 @@ extension AnalysisModel {
     }
 
     func computeColorGrading(for setup: GradeVariant) -> ColorGradingSuggestion.Suggestion? {
-        let markers = gradingMarkers
+        let markers = markers
         guard !markers.isEmpty else { return nil }
         var inputs: [ColorGradingSuggestion.Input] = []
         let harmony = harmonyFit(choice: setup.harmony, rotation: setup.harmonyRotation, space: setup.hueSpace)
@@ -156,7 +154,7 @@ extension AnalysisModel {
     var hslSuggestions: [HSLSuggestion.Channel] { hslSuggestions(for: currentChoices) }
 
     func hslSuggestions(for setup: GradeVariant) -> [HSLSuggestion.Channel] {
-        let markers = gradingMarkers
+        let markers = markers
         guard !markers.isEmpty else { return [] }
         let fit = harmonyFit(choice: setup.harmony, rotation: setup.harmonyRotation, space: setup.hueSpace)
         let aim = effectiveTarget(setup.target, harmony: fit)

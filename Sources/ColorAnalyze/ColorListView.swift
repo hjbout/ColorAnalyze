@@ -56,7 +56,7 @@ struct ColorListView: View {
         let fit = model.harmony
         List(selection: $model.selectedMarkerID) {
             Section {
-                ForEach(Array(model.gradingMarkers.enumerated()), id: \.element.id) { index, marker in
+                ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
                     ColorRow(number: index + 1, marker: marker, isProtected: model.isProtected(marker), protectionNote: model.protectionNote(for: marker), harmony: fit,
                              after: model.afterColor(for: marker), series: model.seriesInfo(for: marker), referenceTitle: model.referenceTitle, afterLabel: model.afterLabel)
                         .tag(marker.id)
@@ -93,7 +93,7 @@ struct ColorListView: View {
                     .listRowSeparator(.hidden)
                 }
             } header: {
-                Text(model.markers.isEmpty ? "Colors" : "Colors (\(model.markers.count))" + (model.previewedWhiteBalance != nil ? " · after white balance" : ""))
+                Text(model.markers.isEmpty ? "Colors" : "Colors (\(model.markers.count))")
             }
         }
         .listStyle(.inset)

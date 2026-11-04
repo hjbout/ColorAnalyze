@@ -6,9 +6,6 @@ extension GradePreviewSettings {
     /// inside the measured range. The tints count with `amount`, the way the preview applies them.
     public var modelCaveats: [String] {
         var notes: [String] = []
-        if whiteBalance != nil {
-            notes.append("White balance is approximated on the rendered colors (a Bradford adaptation); PhotoLab corrects the RAW data, so check the colors there.")
-        }
         let wheels = [shadows, midtones, highlights, master]
 
         let strongest = wheels.map { abs($0.saturation) * amount }.max() ?? 0
