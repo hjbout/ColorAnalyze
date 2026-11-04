@@ -520,6 +520,13 @@ struct ColorWheelView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    let blocked = model.separationBlockedChannels
+                    if !blocked.isEmpty {
+                        Text("\(blocked.map(\.displayName).joined(separator: ", ")) is not turned: the subject has colors there too, and a handle turns the whole channel. A local adjustment in PhotoLab can turn the background alone.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if model.gradingFallsBackToTints {
                         Text("The colors are nearly neutral, so there is nothing to aim at: the grading strengthens the tints the photo already has.")
                             .font(.caption)

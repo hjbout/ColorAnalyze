@@ -132,6 +132,12 @@ extension AnalysisModel {
         return separation?.subjectHueAngle.map { [$0] } ?? []
     }
 
+    /// True for a color the Separation aim must not change: the subject's own colors, colors it shares with the background,
+    /// and protected colors. Greys are not held: they have no hue to keep.
+    func separationHolds(_ marker: Marker) -> Bool {
+        marker.color.chroma >= DxOMapping.neutralChroma && (isProtected(marker) || !isBackground(marker))
+    }
+
     /// The hue shift (sRGB degrees) that sets a background color further apart from the nearest hue of the subject; nil for
     /// subject colors, greys, protected colors and background colors that are far enough already.
     func separationShift(for marker: Marker) -> Double? {

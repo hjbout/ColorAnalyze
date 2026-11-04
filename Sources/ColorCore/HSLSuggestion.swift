@@ -12,12 +12,15 @@ public enum HSLSuggestion {
         public var share: Double
         /// Hue shift the color should get, in sRGB degrees; nil when there is nothing to aim at.
         public var hueShift: Double?
+        /// A color that must keep its hue: a handle turns its whole channel, so that channel is not turned at all.
+        public var holds: Bool
 
-        public init(number: Int, color: SRGBColor, share: Double, hueShift: Double?) {
+        public init(number: Int, color: SRGBColor, share: Double, hueShift: Double?, holds: Bool = false) {
             self.number = number
             self.color = color
             self.share = share
             self.hueShift = hueShift
+            self.holds = holds
         }
     }
 
@@ -39,14 +42,28 @@ public enum HSLSuggestion {
     /// Colors in one channel whose shifts differ by more than this are reported as mixed.
     public static let mixedSpread = 20.0
 
+    /// The channels that hold a color that must keep its hue.
+    private static func heldChannels(in inputs: [Input]) -> Set<DxOChannel> {
+        Set(inputs.filter(\.holds).map { DxOMapping.channel(for: $0.color) })
+    }
+
+    /// The channels that are not turned although a color in them wants to, because another color there must keep its hue,
+    /// in the order of the HSL tool.
+    public static func blockedChannels(from inputs: [Input]) -> [DxOChannel] {
+        let held = heldChannels(in: inputs)
+        let wanted = Set(inputs.filter { abs($0.hueShift ?? 0) >= minimumShift }.map { DxOMapping.channel(for: $0.color) })
+        return DxOChannel.allCases.filter { $0 != .neutral && held.contains($0) && wanted.contains($0) }
+    }
+
     /// One entry per channel with something to do, in the order of the HSL tool (red … magenta).
     /// Neutral colors belong to White Balance and Color Grading, not to HSL, and are left out.
     public static func channels(from inputs: [Input]) -> [Channel] {
         var groups: [DxOChannel: [(number: Int, share: Double, shift: Double)]] = [:]
+        let held = heldChannels(in: inputs)
         for input in inputs {
             guard let shift = input.hueShift else { continue }
             let channel = DxOMapping.channel(for: input.color)
-            guard channel != .neutral else { continue }
+            guard channel != .neutral, !held.contains(channel) else { continue }
             guard let ring = DxOHue.ringShift(of: input.color, bySRGBShift: shift) else { continue }
             groups[channel, default: []].append((input.number, max(input.share, 1e-4), ring))
         }

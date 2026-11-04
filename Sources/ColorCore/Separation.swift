@@ -155,16 +155,26 @@ public struct SeparationCheck: Sendable, Equatable {
     /// A color counts as background when at most this share of its pixels is subject.
     public static let backgroundFraction = 0.3
 
+    /// The greens on the OKLab hue circle, from pure yellow to where cyan starts. A background outside them is not pushed
+    /// in: the way away from a warm subject runs through yellow to green, and a green cast on a wall or on reed looks wrong.
+    public static let greenHues = 110.0...165.0
+
     /// The sRGB hue a background color is aimed at so it stands further apart from the subject: on the OKLab hue circle it
     /// is pushed `push` degrees away from `subjectAngle` (the subject's OKLab hue), but not beyond `enough` degrees from
-    /// it; a color that is that far already keeps its hue.
+    /// it, and not into `greenHues`; a color that is that far already keeps its hue.
     public static func separatedHue(of color: SRGBColor, fromSubjectAngle subjectAngle: Double, push: Double = 30,
                                     enough: Double = 90) -> Double {
         let lab = color.oklab
         let angle = Double(atan2(lab.z, lab.y)) * 180 / .pi
         let d = ColorMath.signedAngle(from: subjectAngle, to: angle)
         guard abs(d) < enough else { return color.hsb.h }
-        let target = subjectAngle + (d < 0 ? -1 : 1) * min(abs(d) + push, enough)
+        var target = subjectAngle + (d < 0 ? -1 : 1) * min(abs(d) + push, enough)
+        let start = ColorMath.normalizeDegrees(angle), turn = abs(ColorMath.signedAngle(from: angle, to: target))
+        if d >= 0, start < greenHues.lowerBound, start + turn > greenHues.lowerBound {
+            target = greenHues.lowerBound
+        } else if d < 0, start > greenHues.upperBound, start - turn < greenHues.upperBound {
+            target = greenHues.upperBound
+        }
         let chroma = (lab.y * lab.y + lab.z * lab.z).squareRoot()
         let radians = Float(target * .pi / 180)
         return SRGBColor(oklab: SIMD3(lab.x, chroma * cos(radians), chroma * sin(radians))).hsb.h

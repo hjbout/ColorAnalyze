@@ -140,10 +140,10 @@ extension AnalysisModel {
                 if let shift = separationShift(for: marker) {
                     return .init(color: marker.color, share: marker.share, targetHue: hue + shift)
                 }
-                // The subject's own colors, colors it shares with the background, and greys stay as they are.
-                let holds = marker.color.chroma >= DxOMapping.neutralChroma && (isProtected(marker) || !isBackground(marker))
-                return .init(color: marker.color, share: marker.share, targetHue: hue, isProtected: holds)
+                return .init(color: marker.color, share: marker.share, targetHue: hue, isProtected: separationHolds(marker))
             }
+            return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: setup.style, scale: setup.amount,
+                                                    guardingGreys: true)
         }
         return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: setup.style, scale: setup.amount)
     }
@@ -154,11 +154,20 @@ extension AnalysisModel {
     var hslSuggestions: [HSLSuggestion.Channel] { hslSuggestions(for: currentChoices) }
 
     func hslSuggestions(for setup: GradeVariant) -> [HSLSuggestion.Channel] {
+        HSLSuggestion.channels(from: hslInputs(for: setup))
+    }
+
+    /// The HSL channels the Separation aim leaves alone although the background wants them turned: the subject has colors there.
+    var separationBlockedChannels: [DxOChannel] {
+        effectiveGradingTarget == .separation ? HSLSuggestion.blockedChannels(from: hslInputs(for: currentChoices)) : []
+    }
+
+    private func hslInputs(for setup: GradeVariant) -> [HSLSuggestion.Input] {
         let markers = markers
         guard !markers.isEmpty else { return [] }
         let fit = harmonyFit(choice: setup.harmony, rotation: setup.harmonyRotation, space: setup.hueSpace)
         let aim = effectiveTarget(setup.target, harmony: fit)
-        return HSLSuggestion.channels(from: markers.enumerated().map { index, marker in
+        return markers.enumerated().map { index, marker in
             let target: Double? = switch aim {
             case .harmony: fit?.shift(for: marker.color.hsb.h)
             case .series: seriesMatch(for: marker)?.hueShift
@@ -167,7 +176,8 @@ extension AnalysisModel {
             }
             // Less than 1 turns part of the way; more than 1 would only turn the color past its target.
             let shift = (aim == .emphasize ? nil : marker.manualShift() ?? (isProtected(marker) ? nil : target)).map { $0 * min(setup.amount, 1) }
-            return HSLSuggestion.Input(number: index + 1, color: marker.color, share: marker.share, hueShift: shift)
-        })
+            return HSLSuggestion.Input(number: index + 1, color: marker.color, share: marker.share, hueShift: shift,
+                                       holds: aim == .separation && shift == nil && separationHolds(marker))
+        }
     }
 }

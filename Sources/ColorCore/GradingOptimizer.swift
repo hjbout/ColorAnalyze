@@ -122,11 +122,21 @@ extension ColorGradingSuggestion {
     /// as close as possible to the hues they should have — while a color keeps its lightness and most of its chroma and
     /// the saturation stays within the strength. The plain heuristic (`suggest`) is the starting point, so the result
     /// is never worse than it by this measure.
+    ///
+    /// With `guardingGreys` a tint also pays for the cast it gives greys the photo may have but that are not among `inputs`:
+    /// for an aim that turns only part of the colors, whose tint the rest of its tonal range gets as well.
     public static func optimized(from inputs: [Input], strength: Strength, style: GradingStyle = .neutral,
-                                 styleAmount: Double = 1, scale: Double = 1) -> Suggestion {
-        refine(seed: suggest(from: inputs, strength: strength), inputs: inputs, strength: strength, style: style,
-               problem: GradingProblem(inputs: inputs, cap: strength.maxSaturation, style: style, styleAmount: styleAmount), emphasizing: false, scale: scale)
+                                 styleAmount: Double = 1, scale: Double = 1, guardingGreys: Bool = false) -> Suggestion {
+        let guarded = guardingGreys ? inputs + greyGuards : inputs
+        return refine(seed: suggest(from: inputs, strength: strength), inputs: guarded, strength: strength, style: style,
+                      problem: GradingProblem(inputs: guarded, cap: strength.maxSaturation, style: style, styleAmount: styleAmount), emphasizing: false, scale: scale)
     }
+
+    /// Greys in the shadows, the midtones and the highlights, for `guardingGreys`.
+    static let greyGuards = [0.25, 0.5, 0.75].map {
+        Input(color: SRGBColor(r: $0, g: $0, b: $0), share: greyGuardShare, targetHue: 0)
+    }
+    static let greyGuardShare = 0.25
 
     /// For photos without real colors (`emphasize` is the heuristic): the faint tint of each color is made stronger, at the same
     /// hue, and the calibrated model finds the Hue and Saturation of the wheels that render it so. Unlike the heuristic it

@@ -2478,7 +2478,7 @@ import Testing
                                             highlights: tint(preset.highlights), master: tint(preset.master),
                                             balance: Double(preset.balance))
         for channel in HSLSuggestion.channels(from: [
-            .init(number: 1, color: skin, share: 0.15, hueShift: nil),
+            .init(number: 1, color: skin, share: 0.15, hueShift: nil, holds: true),
             .init(number: 2, color: wall, share: 0.85, hueShift: ColorMath.signedAngle(from: wall.hsb.h, to: target)),
         ]) { settings.hueShifts[channel.channel] = channel.hueShift }
         let plan = GradePreview.Plan(settings)
@@ -2494,8 +2494,8 @@ import Testing
         let lab = skin.oklab
         let subjectAngle = Double(atan2(lab.z, lab.y)) * 180 / .pi
         func angle(_ c: SRGBColor) -> Double { Double(atan2(c.oklab.z, c.oklab.y)) * 180 / .pi }
-        // A yellowish wall 20° from the skin is turned further toward yellow-green.
-        let wall = SRGBColor.fromHSB(h: 45, s: 0.5, b: 0.7)
+        // An orange-brown wall close to the skin is turned further toward yellow.
+        let wall = SRGBColor.fromHSB(h: 35, s: 0.5, b: 0.7)
         let turned = SRGBColor.fromHSB(h: SeparationCheck.separatedHue(of: wall, fromSubjectAngle: subjectAngle), s: 0.5, b: 0.7)
         let before = abs(ColorMath.signedAngle(from: subjectAngle, to: angle(wall)))
         let after = abs(ColorMath.signedAngle(from: subjectAngle, to: angle(turned)))
@@ -2504,6 +2504,65 @@ import Testing
         // A blue sky is far enough already.
         let sky = SRGBColor.fromHSB(h: 215, s: 0.5, b: 0.8)
         #expect(SeparationCheck.separatedHue(of: sky, fromSubjectAngle: subjectAngle) == sky.hsb.h)
+    }
+}
+
+@Suite struct SeparationAimTests {
+    private func angle(_ c: SRGBColor) -> Double { ColorMath.normalizeDegrees(Double(atan2(c.oklab.z, c.oklab.y)) * 180 / .pi) }
+    private func aimed(_ c: SRGBColor, from subject: SRGBColor) -> SRGBColor {
+        SRGBColor.fromHSB(h: SeparationCheck.separatedHue(of: c, fromSubjectAngle: angle(subject)), s: c.hsb.s, b: c.hsb.b)
+    }
+
+    @Test func aWarmBackgroundStopsBeforeGreen() {
+        let red = SRGBColor(r: 0.69, g: 0.23, b: 0.18)
+        let reed = SRGBColor(r: 0.71, g: 0.64, b: 0.37)
+        #expect(angle(reed) < SeparationCheck.greenHues.lowerBound)
+        #expect(angle(aimed(reed, from: red)) <= SeparationCheck.greenHues.lowerBound + 3)
+        #expect(angle(aimed(reed, from: red)) > angle(reed))
+    }
+
+    @Test func aCoolBackgroundStopsBeforeGreen() {
+        let blue = SRGBColor(r: 0.18, g: 0.37, b: 0.66)
+        let teal = SRGBColor.fromHSB(h: 170, s: 0.5, b: 0.6)
+        #expect(angle(teal) > SeparationCheck.greenHues.upperBound)
+        #expect(angle(aimed(teal, from: blue)) >= SeparationCheck.greenHues.upperBound - 3)
+    }
+
+    @Test func aChannelWithAHeldColorIsNotTurned() {
+        let skin = SRGBColor(r: 0.85, g: 0.63, b: 0.49), wall = SRGBColor(r: 0.72, g: 0.61, b: 0.45)
+        #expect(DxOMapping.channel(for: skin) == DxOMapping.channel(for: wall))
+        let inputs: [HSLSuggestion.Input] = [
+            .init(number: 1, color: skin, share: 0.02, hueShift: nil, holds: true),
+            .init(number: 2, color: wall, share: 0.6, hueShift: 15),
+        ]
+        #expect(HSLSuggestion.channels(from: inputs).isEmpty)
+        #expect(HSLSuggestion.blockedChannels(from: inputs) == [DxOMapping.channel(for: wall)])
+    }
+
+    @Test func guardingGreysKeepsATintOffThem() {
+        // A red subject in the shadows and reed in the highlights: nothing stops the highlights wheel from tinting.
+        let red = SRGBColor(r: 0.69, g: 0.23, b: 0.18), reed = SRGBColor(r: 0.71, g: 0.64, b: 0.37)
+        let mud = SRGBColor(r: 0.43, g: 0.36, b: 0.24)
+        let inputs: [ColorGradingSuggestion.Input] = [
+            .init(color: red, share: 0.15, targetHue: red.hsb.h, isProtected: true),
+            .init(color: reed, share: 0.5, targetHue: SeparationCheck.separatedHue(of: reed, fromSubjectAngle: angle(red))),
+            .init(color: mud, share: 0.35, targetHue: SeparationCheck.separatedHue(of: mud, fromSubjectAngle: angle(red))),
+        ]
+        func cast(_ guarding: Bool) -> Float {
+            let preset = ColorGradingSuggestion.optimized(from: inputs, strength: .moderate, guardingGreys: guarding).preset
+            func tint(_ w: ColorGradingPreset.Wheel) -> GradePreviewSettings.Tint {
+                .init(dxoHue: Double(w.hue), saturation: Double(w.saturation), luminance: Double(w.luminance))
+            }
+            let plan = GradePreview.Plan(GradePreviewSettings(shadows: tint(preset.shadows), midtones: tint(preset.midtones),
+                                                              highlights: tint(preset.highlights), master: tint(preset.master),
+                                                              balance: Double(preset.balance)))
+            return [0.25, 0.5, 0.75].map { (v: Double) -> Float in
+                let lab = plan.apply(SRGBColor(r: v, g: v, b: v).oklab)
+                return (lab.y * lab.y + lab.z * lab.z).squareRoot()
+            }.max()!
+        }
+        #expect(cast(true) < 0.012)
+        #expect(cast(true) <= cast(false))
     }
 }
 
