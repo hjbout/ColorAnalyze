@@ -174,15 +174,17 @@ extension AnalysisModel {
         var made: [GradeVariant.ID: VariantPreview] = [:]
         for variant in variants {
             guard !Task.isCancelled else { return }
-            let grading = computeColorGrading(for: variant)
-            guard let grading else {
+            guard let request = gradingRequest(for: variant) else {
                 made[variant.id] = VariantPreview(image: nil, fitBefore: nil, fitAfter: nil, caveats: [])
                 continue
             }
-            let settings = gradeSettings(for: variant, grading: grading)
-            let rendered = await Task.detached(priority: .utility) { GradePreview.render(buffer, settings: settings) }.value
-            made[variant.id] = VariantPreview(image: rendered, fitBefore: grading.fit?.before, fitAfter: grading.fit?.after,
-                                              caveats: settings.modelCaveats)
+            let hsl = hslSuggestions(for: variant)
+            made[variant.id] = await Task.detached(priority: .utility) {
+                let grading = request.run()
+                let settings = Self.gradeSettings(grading: grading, hsl: hsl)
+                return VariantPreview(image: GradePreview.render(buffer, settings: settings), fitBefore: grading.fit?.before,
+                                      fitAfter: grading.fit?.after, caveats: settings.modelCaveats)
+            }.value
         }
         guard !Task.isCancelled else { return }
         variantPreviews = made

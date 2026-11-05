@@ -33,7 +33,7 @@ public enum HarmonyKind: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-public struct HarmonyInput: Sendable {
+public struct HarmonyInput: Sendable, Equatable {
     public var hue: Double
     public var weight: Double
 

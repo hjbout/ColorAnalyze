@@ -7,7 +7,19 @@ extension AnalysisModel {
 
     /// What the intention asks of the contrasts (*dramatic*: light–dark high, …), with the words that ask.
     var contrastAims: [ContrastProfile.Kind: (aim: Intention.ContrastAim, words: [String])] {
-        Intention.contrastAims(for: intention)
+        let text = intention
+        if let cache = contrastAimsCache, cache.text == text { return cache.aims }
+        let aims = Intention.contrastAims(for: text)
+        contrastAimsCache = (text, aims)
+        return aims
+    }
+
+    /// Waits for a drag to come to rest; false when a newer request replaced this one in the meantime. For the measurements
+    /// of a whole photo that run from a `.task(id:)`: their background work cannot be stopped once it has started, so without
+    /// this every step of a drag would start one more of each.
+    func settled() async -> Bool {
+        try? await Task.sleep(for: .milliseconds(120))
+        return !Task.isCancelled
     }
 
     /// What the contrast profile depends on: the photo, and the graded version or the predicted grading.

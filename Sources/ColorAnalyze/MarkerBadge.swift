@@ -25,7 +25,7 @@ struct BadgeNumber: View {
     let size: CGFloat
 
     var body: some View {
-        let text = Text("\(number)").font(.system(size: size, weight: .heavy, design: .rounded))
+        let text = Text(verbatim: "\(number)").font(.system(size: size, weight: .heavy, design: .rounded))
         ZStack {
             if !color.prefersDarkText {
                 let halo = Color.black.opacity(0.6)

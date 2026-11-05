@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import os
 
 /// What a preview of the suggested grading applies.
 public struct GradePreviewSettings: Sendable, Equatable {
@@ -133,8 +134,8 @@ public enum GradePreview {
             var vectors = wheels.map(vector)
             // Master is not one direction times one curve: it has its own curve per channel and hue (see GradePreviewMasterTable).
             if settings.master.saturation != 0 {
-                masterGrids = GradePreview.masterChannelGrids(hue: Float(ColorMath.normalizeDegrees(settings.master.dxoHue)),
-                                                              scale: Float(settings.master.saturation / 100 * settings.amount))
+                masterGrids = Self.masterGrids(hue: Float(ColorMath.normalizeDegrees(settings.master.dxoHue)),
+                                               scale: Float(settings.master.saturation / 100 * settings.amount))
                 vectors[3] = .zero
             } else {
                 masterGrids = []
@@ -152,8 +153,7 @@ public enum GradePreview {
                 tintGrids = Self.curveGrid
                 luminanceGrids = Self.luminanceGrid
             } else {
-                tintGrids = Self.balanced(Self.curveGrid, balance: Float(settings.balance))
-                luminanceGrids = Self.balanced(Self.luminanceGrid, balance: Float(settings.balance))
+                (tintGrids, luminanceGrids) = Self.balancedGrids(Float(settings.balance))
             }
 
             let shifts = settings.hueShifts.filter { abs($0.value) >= 0.01 }
@@ -234,6 +234,33 @@ public enum GradePreview {
                 }
                 return Float(total)
             }
+        }
+
+        /// The last results of a function that spreads a few numbers over the fine grids. Making those grids is nearly all a
+        /// plan costs, and the search of the grading optimizer makes thousands of plans that differ in one parameter at a time.
+        private struct GridMemo<Key: Hashable & Sendable, Value: Sendable>: Sendable {
+            private let values = OSAllocatedUnfairLock<[Key: Value]>(initialState: [:])
+
+            func value(for key: Key, make: () -> Value) -> Value {
+                if let known = values.withLock({ $0[key] }) { return known }
+                let made = make()
+                values.withLock {
+                    if $0.count >= 64 { $0.removeAll() }
+                    $0[key] = made
+                }
+                return made
+            }
+        }
+        private static let balancedMemo = GridMemo<Float, BalancedGrids>()
+        private static let masterMemo = GridMemo<SIMD2<Float>, [[Float]]>()
+        private typealias BalancedGrids = (tint: [[Float]], luminance: [[Float]])
+
+        private static func balancedGrids(_ balance: Float) -> BalancedGrids {
+            balancedMemo.value(for: balance) { (balanced(curveGrid, balance: balance), balanced(luminanceGrid, balance: balance)) }
+        }
+
+        private static func masterGrids(hue: Float, scale: Float) -> [[Float]] {
+            masterMemo.value(for: SIMD2(hue, scale)) { GradePreview.masterChannelGrids(hue: hue, scale: scale) }
         }
 
         /// Balance leaves the sum of the three ranges alone and moves how they divide it: each range's share is

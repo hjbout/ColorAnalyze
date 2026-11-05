@@ -3,6 +3,27 @@ import ColorCore
 import Observation
 import UniformTypeIdentifiers
 
+/// A search for a grading with everything it needs from the markers, so it can run off the main thread.
+struct GradingRequest: Sendable {
+    enum Aim: Sendable {
+        case emphasis([(color: SRGBColor, share: Double)])
+        case hues([ColorGradingSuggestion.Input], guardingGreys: Bool)
+    }
+    var aim: Aim
+    var strength: ColorGradingSuggestion.Strength
+    var style: GradingStyle
+    var scale: Double
+
+    func run() -> ColorGradingSuggestion.Suggestion {
+        switch aim {
+        case .emphasis(let colors):
+            ColorGradingSuggestion.optimizedEmphasis(colors, strength: strength, style: style, scale: scale)
+        case .hues(let inputs, let guardingGreys):
+            ColorGradingSuggestion.optimized(from: inputs, strength: strength, style: style, scale: scale, guardingGreys: guardingGreys)
+        }
+    }
+}
+
 @MainActor
 extension AnalysisModel {
     // MARK: DxO Color Grading
@@ -87,8 +108,14 @@ extension AnalysisModel {
     /// and the series or reference palette.
     var markersKey: Int {
         var hasher = Hasher()
+        func combine(_ color: SRGBColor) {
+            let rgb = color.rgb255
+            hasher.combine(rgb.r)
+            hasher.combine(rgb.g)
+            hasher.combine(rgb.b)
+        }
         for marker in markers {
-            hasher.combine(marker.color.hex)
+            combine(marker.color)
             hasher.combine(Int((marker.share * 10_000).rounded()))
             hasher.combine(isProtected(marker))
             hasher.combine(marker.targetHue)
@@ -100,18 +127,23 @@ extension AnalysisModel {
         hasher.combine(referencePhoto?.url.path)
         hasher.combine(separationSubjectMap != nil)
         hasher.combine(foregroundMask != nil)
-        for color in seriesPalette { hasher.combine(color.color.hex) }
+        for color in seriesPalette { combine(color.color) }
         return hasher.finalize()
     }
 
     func computeColorGrading(for setup: GradeVariant) -> ColorGradingSuggestion.Suggestion? {
+        gradingRequest(for: setup)?.run()
+    }
+
+    /// What the grading of a setup is found from; nil when there is nothing to aim at.
+    func gradingRequest(for setup: GradeVariant) -> GradingRequest? {
         let markers = markers
         guard !markers.isEmpty else { return nil }
         var inputs: [ColorGradingSuggestion.Input] = []
         let harmony = harmonyFit(choice: setup.harmony, rotation: setup.harmonyRotation, space: setup.hueSpace)
         switch effectiveTarget(setup.target, harmony: harmony) {
         case .emphasize:
-            return ColorGradingSuggestion.optimizedEmphasis(markers.map { ($0.color, $0.share) }, strength: gradingStrength, style: setup.style, scale: setup.amount)
+            return GradingRequest(aim: .emphasis(markers.map { ($0.color, $0.share) }), strength: gradingStrength, style: setup.style, scale: setup.amount)
         case .harmony:
             guard let fit = harmony else { return nil }
             inputs = markers.map {
@@ -142,10 +174,9 @@ extension AnalysisModel {
                 }
                 return .init(color: marker.color, share: marker.share, targetHue: hue, isProtected: separationHolds(marker))
             }
-            return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: setup.style, scale: setup.amount,
-                                                    guardingGreys: true)
+            return GradingRequest(aim: .hues(inputs, guardingGreys: true), strength: gradingStrength, style: setup.style, scale: setup.amount)
         }
-        return ColorGradingSuggestion.optimized(from: inputs, strength: gradingStrength, style: setup.style, scale: setup.amount)
+        return GradingRequest(aim: .hues(inputs, guardingGreys: false), strength: gradingStrength, style: setup.style, scale: setup.amount)
     }
 
     /// Per channel of PhotoLab's HSL tool, how far its Hue handle should turn (degrees on PhotoLab's ring;

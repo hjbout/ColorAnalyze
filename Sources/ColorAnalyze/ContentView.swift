@@ -40,6 +40,7 @@ struct ContentView: View {
         .frame(minWidth: model.previewFocus ? 480 : 1100, minHeight: 640)
         .onChange(of: series.windowRequest) { openWindow(id: "series") }
         .onAppear { model.undoManager = undoManager }
+        .onChange(of: model.colorGrading != nil, initial: true) { _, hasGrading in model.hasGrading = hasGrading }
         .onChange(of: undoManager) { model.undoManager = undoManager }
         .navigationTitle(model.image.map { $0.url.lastPathComponent + (model.isDirty ? " — Edited" : "") } ?? "ColorAnalyze")
         .overlay {
@@ -153,22 +154,7 @@ struct ContentView: View {
                 }
                 .help("Hide the color list and wheel so the photo fills the window (⌥⌘P)")
 
-                Menu {
-                    Button("Fit Photo") { model.fitPhoto() }
-                    Button("Actual Pixels") { model.zoomToActualPixels() }
-                    Divider()
-                    Button("Zoom In") { model.zoomIn() }
-                    Button("Zoom Out") { model.zoomOut() }
-                        .disabled(!model.viewport.isZoomed)
-                    Divider()
-                    ForEach([2, 4, 8, 16], id: \.self) { level in
-                        Button("\(level)×") { model.setZoomLevel(CGFloat(level)) }
-                    }
-                } label: {
-                    Label(model.zoomLabel, systemImage: "magnifyingglass")
-                }
-                .disabled(model.image == nil)
-                .help("Zoom level (⌘+ / ⌘− / ⌘0). Pinch or ⌘-scroll zooms; scroll or drag moves the photo.")
+                ZoomMenu()
 
                 if model.afterImage != nil {
                     Picker("View", selection: $model.compareMode) {
@@ -229,5 +215,29 @@ struct ContentView: View {
                 .help("Analyze several photos together and compare them with a shared palette (⇧⌘S)")
             }
         }
+    }
+}
+
+/// A view of its own: it follows the zoom, and moving the photo should not rebuild the rest of the window.
+private struct ZoomMenu: View {
+    @Environment(AnalysisModel.self) private var model
+
+    var body: some View {
+        Menu {
+            Button("Fit Photo") { model.fitPhoto() }
+            Button("Actual Pixels") { model.zoomToActualPixels() }
+            Divider()
+            Button("Zoom In") { model.zoomIn() }
+            Button("Zoom Out") { model.zoomOut() }
+                .disabled(!model.viewport.isZoomed)
+            Divider()
+            ForEach([2, 4, 8, 16], id: \.self) { level in
+                Button("\(level)×") { model.setZoomLevel(CGFloat(level)) }
+            }
+        } label: {
+            Label(model.zoomLabel, systemImage: "magnifyingglass")
+        }
+        .disabled(model.image == nil)
+        .help("Zoom level (⌘+ / ⌘− / ⌘0). Pinch or ⌘-scroll zooms; scroll or drag moves the photo.")
     }
 }

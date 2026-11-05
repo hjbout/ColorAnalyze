@@ -118,7 +118,7 @@ struct ColorAnalyzeApp: App {
                 Button("Toggle Preview of the Suggestion") { delegate.model.togglePreview() }
                     .keyboardShortcut("p", modifiers: [])
                 Button("Pin Current as Variant") { delegate.model.pinCurrentVariant() }
-                    .disabled(delegate.model.colorGrading == nil)
+                    .disabled(!delegate.model.hasGrading)
                 Toggle("Compare All Variants", isOn: Bindable(delegate.model).showVariantGrid)
                     .disabled(delegate.model.variants.isEmpty)
                 Button("Previous Variant") { delegate.model.stepVariant(-1) }

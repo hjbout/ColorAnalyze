@@ -43,6 +43,11 @@ extension AnalysisModel {
 
     /// A grading setup's suggestion as settings of the calibrated model, as suggested (amount 1).
     func gradeSettings(for setup: GradeVariant, grading: ColorGradingSuggestion.Suggestion) -> GradePreviewSettings {
+        Self.gradeSettings(grading: grading, hsl: hslSuggestions(for: setup))
+    }
+
+    /// The same from a grading and HSL turns already found, off the main thread if need be.
+    nonisolated static func gradeSettings(grading: ColorGradingSuggestion.Suggestion, hsl: [HSLSuggestion.Channel]) -> GradePreviewSettings {
         func tint(_ wheel: ColorGradingPreset.Wheel) -> GradePreviewSettings.Tint {
             .init(dxoHue: Double(wheel.hue), saturation: Double(wheel.saturation), luminance: Double(wheel.luminance))
         }
@@ -50,7 +55,7 @@ extension AnalysisModel {
                                             highlights: tint(grading.preset.highlights), master: tint(grading.preset.master),
                                             balance: Double(grading.preset.balance),
                                             toneBlacks: Double(grading.toneBlacks), toneShadows: Double(grading.toneShadows))
-        for channel in hslSuggestions(for: setup) { settings.hueShifts[channel.channel] = channel.hueShift }
+        for channel in hsl { settings.hueShifts[channel.channel] = channel.hueShift }
         return settings
     }
 

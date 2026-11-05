@@ -104,6 +104,24 @@ struct ColorListView: View {
     }
 }
 
+/// How much of the photo a color covers. Drawn by hand: an AppKit progress bar per row is slow to update during a drag, when
+/// the share of every color changes.
+private struct ShareBar: View {
+    let share: Double
+
+    var body: some View {
+        Capsule()
+            .fill(.quaternary)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(Color.accentColor)
+                    .frame(width: 56 * min(1, max(0, share)))
+            }
+            .frame(width: 56, height: 5)
+            .clipShape(Capsule())
+    }
+}
+
 private struct ColorRow: View {
     @Environment(AnalysisModel.self) private var model
     let number: Int
@@ -138,7 +156,7 @@ private struct ColorRow: View {
                         hexAndCopy(color)
                         if marker.isAccent { accentTag }
                     }
-                    Text("RGB \(rgb.r) \(rgb.g) \(rgb.b)")
+                    Text(verbatim: "RGB \(rgb.r) \(rgb.g) \(rgb.b)")
                     Text(String(format: "HSL %.0f° %.0f%% %.0f%%", hsl.h, hsl.s * 100, hsl.l * 100))
                 }
                 .font(.system(.caption, design: .monospaced))
@@ -146,8 +164,7 @@ private struct ColorRow: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(String(format: "%.1f%%", marker.share * 100))
                         .font(.headline.monospacedDigit())
-                    ProgressView(value: marker.share)
-                        .frame(width: 56)
+                    ShareBar(share: marker.share)
                 }
             }
 
@@ -305,13 +322,13 @@ private struct ColorRow: View {
                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.white.opacity(0.8), style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])))
                 .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(afterLabel) \(after.hex)")
+                Text(verbatim: "\(afterLabel) \(after.hex)")
                     .font(.system(.caption, design: .monospaced).weight(.semibold))
-                Text("Δ hue \(hueText) · sat \(signedRounded((a.s - b.s) * 100, unit: "%")) · L* \(signedRounded(after.lightness - before.lightness))")
+                Text(verbatim: "Δ hue \(hueText) · sat \(signedRounded((a.s - b.s) * 100, unit: "%")) · L* \(signedRounded(after.lightness - before.lightness))")
                     .font(.caption)
                 if let was = marker.targetShift(fromHue: before.hsb.h, harmony: harmony),
                    let now = marker.targetShift(fromHue: after.hsb.h, harmony: harmony), chromatic {
-                    Text("Harmony shift \(signedRounded(was, unit: "°")) → \(signedRounded(now, unit: "°"))")
+                    Text(verbatim: "Harmony shift \(signedRounded(was, unit: "°")) → \(signedRounded(now, unit: "°"))")
                         .font(.caption)
                         .foregroundStyle(abs(now) < abs(was) - 0.5 ? .green : abs(now) > abs(was) + 0.5 ? .red : .secondary)
                 }

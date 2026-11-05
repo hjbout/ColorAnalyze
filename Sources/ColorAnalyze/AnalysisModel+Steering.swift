@@ -36,25 +36,30 @@ extension AnalysisModel {
     }
 
     /// Tries every style with a few levels of HSL Saturation (and tone curves, for light–dark) and keeps the one whose predicted contrasts come
-    /// closest to the intention's (see `ContrastSteering`). The gradings are found here; the contrasts in the background.
+    /// closest to the intention's (see `ContrastSteering`). All of it runs in the background: what it takes from the markers is
+    /// gathered here first.
     func refreshSteering() async {
         guard let key = steeringRequestKey, key != steeringKey, let image else { return }
         let aims = contrastAims.mapValues(\.aim)
-        var candidates: [ContrastSteering.Candidate] = []
+        var searches: [(style: GradingStyle, request: GradingRequest, hsl: [HSLSuggestion.Channel])] = []
         for style in GradingStyle.allCases {
             var setup = currentChoices
             setup.style = style
             setup.amount = 1
-            guard let grading = computeColorGrading(for: setup) else { continue }
-            candidates.append(.init(style: style, settings: gradeSettings(for: setup, grading: grading),
-                                    hueFitAfter: grading.fit?.after))
+            guard let request = gradingRequest(for: setup) else { continue }
+            searches.append((style, request, hslSuggestions(for: setup)))
         }
         let channels = Set(markers.map { DxOMapping.channel(for: $0.color) })
         let protected = Set(markers.filter { isProtected($0) }.map { DxOMapping.channel(for: $0.color) })
         let accent = accentChannel
         let lab = ContrastSteering.sample(image.analysis.lab)
         let result = await Task.detached(priority: .userInitiated) {
-            ContrastSteering.choose(candidates: candidates, lab: lab, aims: aims,
+            let candidates = searches.map { search -> ContrastSteering.Candidate in
+                let grading = search.request.run()
+                return .init(style: search.style, settings: Self.gradeSettings(grading: grading, hsl: search.hsl),
+                             hueFitAfter: grading.fit?.after)
+            }
+            return ContrastSteering.choose(candidates: candidates, lab: lab, aims: aims,
                                     saturationPlans: ContrastSteering.saturationPlans(aims: aims, channels: channels,
                                                                                       protected: protected, accent: accent),
                                     tonePlans: ContrastSteering.tonePlans(aims: aims))

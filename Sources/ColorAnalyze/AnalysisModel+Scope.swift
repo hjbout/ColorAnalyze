@@ -32,15 +32,22 @@ extension AnalysisModel {
         return PixelScopeRequest(key: hasher.finalize(), buffer: image.sampling, space: hueSpace, plan: nil)
     }
 
-    /// Renders the scope in the background. The last image stays up until the new one is ready, so a drag does not
-    /// make it flicker; a request that was replaced in the meantime is dropped.
-    func renderPixelScope(_ request: PixelScopeRequest) async {
-        guard request.key != pixelScopeKey else { return }
-        let rendered = await Task.detached(priority: .userInitiated) {
-            PixelScope(request.buffer, space: request.space, step: 2, plan: request.plan).image(space: request.space)
-        }.value
-        guard !Task.isCancelled else { return }
-        pixelScopeImage = rendered
-        pixelScopeKey = request.key
+    /// Renders the scope in the background. The last image stays up until the new one is ready, so a drag does not make it
+    /// flicker. While a render runs, newer requests wait and only the newest is rendered next, so a drag shows a stream of
+    /// scopes without piling up renders.
+    func renderPixelScope(_ request: PixelScopeRequest) {
+        guard pixelScopeTask != nil || request.key != pixelScopeKey else { return }
+        pendingPixelScope = request
+        guard pixelScopeTask == nil else { return }   // the running loop picks it up
+        pixelScopeTask = Task {
+            while let request = pendingPixelScope {
+                pendingPixelScope = nil
+                pixelScopeImage = await Task.detached(priority: .userInitiated) {
+                    PixelScope(request.buffer, space: request.space, step: 2, plan: request.plan).image(space: request.space)
+                }.value
+                pixelScopeKey = request.key
+            }
+            pixelScopeTask = nil
+        }
     }
 }

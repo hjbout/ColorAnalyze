@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import os
 import simd
 import Testing
 @testable import ColorCore
@@ -2793,5 +2794,52 @@ import Testing
         #expect(check.findings().contains { $0.kind == .noWhite })
         #expect(check.findings(softTones: true).isEmpty)
         #expect(check.verdict(softTones: true) == .ok)
+    }
+}
+
+@Suite struct GradePlanMemoTests {
+    private let color = SIMD3<Float>(0.42, 0.05, -0.03)
+
+    private func graded(balance: Double = 0, masterHue: Double = 0, masterSaturation: Double = 0) -> SIMD3<Float> {
+        let settings = GradePreviewSettings(shadows: .init(dxoHue: 200, saturation: 20), midtones: .init(dxoHue: 90, saturation: 10),
+                                            highlights: .init(dxoHue: 40, saturation: 25),
+                                            master: .init(dxoHue: masterHue, saturation: masterSaturation), balance: balance)
+        return GradePreview.Plan(settings).apply(color)
+    }
+
+    @Test func aRememberedBalanceGivesTheSameGradeAsTheFirstTime() {
+        let first = graded(balance: 17)
+        #expect(first != graded())
+        #expect(graded(balance: 17) == first)
+        // More Balances than are remembered: the grade is made again, and comes out the same.
+        for balance in 1...100 where balance != 17 { _ = graded(balance: Double(balance) / 3) }
+        #expect(graded(balance: 17) == first)
+    }
+
+    @Test func differentBalancesAreKeptApart() {
+        #expect(graded(balance: 30) != graded(balance: -30))
+    }
+
+    @Test func aRememberedMasterGivesTheSameGradeAsTheFirstTime() {
+        let first = graded(masterHue: 120, masterSaturation: 15)
+        #expect(first != graded())
+        #expect(graded(masterHue: 120, masterSaturation: 15) == first)
+        #expect(graded(masterHue: 121, masterSaturation: 15) != first)
+        #expect(graded(masterHue: 120, masterSaturation: 16) != first)
+    }
+
+    @Test func plansCanBeMadeOnManyThreadsAtOnce() {
+        let expected = graded(balance: 11, masterHue: 77, masterSaturation: 9)
+        let results = OSAllocatedUnfairLock(initialState: [SIMD3<Float>]())
+        DispatchQueue.concurrentPerform(iterations: 200) { index in
+            let settings = GradePreviewSettings(shadows: .init(dxoHue: 200, saturation: 20), midtones: .init(dxoHue: 90, saturation: 10),
+                                                highlights: .init(dxoHue: 40, saturation: 25),
+                                                master: .init(dxoHue: 77, saturation: 9), balance: 11)
+            let other = GradePreviewSettings(balance: Double(index % 70) + 0.5)
+            _ = GradePreview.Plan(other)
+            let result = GradePreview.Plan(settings).apply(SIMD3<Float>(0.42, 0.05, -0.03))
+            results.withLock { $0.append(result) }
+        }
+        #expect(results.withLock { $0.allSatisfy { $0 == expected } })
     }
 }

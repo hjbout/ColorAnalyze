@@ -177,6 +177,9 @@ final class AnalysisModel {
 
     var gradingTarget = GradingTarget.harmony
 
+    /// True when there is a suggestion, for the menus: they would be rebuilt on every step of a drag if they asked `colorGrading`.
+    var hasGrading = false
+
     /// Grading setups pinned to compare and come back to; saved in the session.
     var variants: [GradeVariant] = []
 
@@ -197,6 +200,10 @@ final class AnalysisModel {
     @ObservationIgnored var predictionCache: (key: Int, settings: GradePreviewSettings?, plan: GradePreview.Plan?)?
 
     @ObservationIgnored var whiteBalanceCache: (key: String, check: WhiteBalanceCheck)?
+
+    @ObservationIgnored var harmonyMemo = HarmonyMemo()
+
+    @ObservationIgnored var contrastAimsCache: (text: String, aims: [ContrastProfile.Kind: (aim: Intention.ContrastAim, words: [String])])?
 
     /// Overrides the series palette while it is set. Stays when another photo is opened, so one reference can
     /// serve a whole batch; it is not part of the saved session.
@@ -357,6 +364,9 @@ final class AnalysisModel {
     /// The pixel scope as last rendered, and what it was rendered from.
     var pixelScopeImage: CGImage?
     @ObservationIgnored var pixelScopeKey: Int?
+    /// The render loop of the scope, while it runs, and the newest request waiting for it.
+    @ObservationIgnored var pixelScopeTask: Task<Void, Never>?
+    @ObservationIgnored var pendingPixelScope: PixelScopeRequest?
     /// Darkens everything but the detected subject, to show what the weighting is based on.
     var showSaliency = false {
         didSet {

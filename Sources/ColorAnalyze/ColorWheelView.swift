@@ -124,6 +124,8 @@ struct ColorWheelView: View {
         let showColors = original || !model.hasAfterColors || markerMode != .targets
         let showTargets = !original && model.hasAfterColors && markerMode != .colors
         let scopeRequest = model.pixelScopeRequest(after: showTargets)
+        let afterColors = model.markers.map { model.afterColor(for: $0) }
+        let canEditTargets = model.canEditTargets
         VStack(spacing: 16) {
             GeometryReader { geo in
                 // Leave room for the rotation handle, which sits 7% outside the rim at any angle.
@@ -170,7 +172,7 @@ struct ColorWheelView: View {
                     }
 
                     if showColors && showTargets {
-                        AfterTrails(markers: model.markers, afterColors: model.markers.map { model.afterColor(for: $0) },
+                        AfterTrails(markers: model.markers, afterColors: afterColors,
                                     space: model.hueSpace, center: center, radius: radius)
                             .allowsHitTesting(false)
                     }
@@ -210,9 +212,9 @@ struct ColorWheelView: View {
 
                     if showTargets {
                         ForEach(Array(model.markers.enumerated()), id: \.element.id) { index, marker in
-                            if let after = model.afterColor(for: marker) {
+                            if let after = afterColors[index] {
                                 let hsb = after.hsb
-                                let editable = model.canEditTargets && marker.color.chroma >= DxOMapping.neutralChroma
+                                let editable = canEditTargets && marker.color.chroma >= DxOMapping.neutralChroma
                                 GhostBadge(number: index + 1, color: after,
                                            diameter: 16 + 30 * sqrt(marker.share), isManual: marker.targetHue != nil)
                                     .position(WheelGeometry.point(rgbHue: hsb.h, space: model.hueSpace, saturation: hsb.s,
@@ -242,7 +244,7 @@ struct ColorWheelView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { model.selectedMarkerID = nil }
                 .task(id: scopeRequest?.key) {
-                    if let scopeRequest { await model.renderPixelScope(scopeRequest) }
+                    if let scopeRequest { model.renderPixelScope(scopeRequest) }
                 }
             }
             .aspectRatio(1, contentMode: .fit)
@@ -275,8 +277,7 @@ struct ColorWheelView: View {
                 }
             }
 
-            LightnessStrip(markers: model.markers, selectedID: model.selectedMarkerID,
-                           afterColors: model.markers.map { model.afterColor(for: $0) })
+            LightnessStrip(markers: model.markers, selectedID: model.selectedMarkerID, afterColors: afterColors)
                 .padding(.horizontal, 20)
 
             Picker("Panel", selection: $tab) {
@@ -306,9 +307,12 @@ struct ColorWheelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // The subject map is detected for the separation check whether or not the colors are weighted.
         .task(id: model.image?.url) { await model.prepareSubject() }
-        .task(id: model.separationRequestKey) { await model.refreshSeparation() }
-        .task(id: model.contrastRequestKey) { await model.refreshContrastProfile() }
-        .task(id: model.contrastRequestKey) { await model.refreshToneCheck() }
+        .task(id: model.separationRequestKey) { if await model.settled() { await model.refreshSeparation() } }
+        .task(id: model.contrastRequestKey) {
+            guard await model.settled() else { return }
+            await model.refreshContrastProfile()
+            await model.refreshToneCheck()
+        }
     }
 
     private func seriesFitView(_ fit: PhotoConsistency, after: PhotoConsistency?) -> some View {
@@ -901,7 +905,7 @@ struct ColorWheelView: View {
         }
         .font(.caption)
         .fixedSize(horizontal: false, vertical: true)
-        .task(id: model.steeringRequestKey) { await model.refreshSteering() }
+        .task(id: model.steeringRequestKey) { if await model.settled() { await model.refreshSteering() } }
     }
 
     /// How well the subject stands apart from the background, and what the grading does to it.
@@ -1068,7 +1072,7 @@ struct ReferenceDiamond: View {
                         .rotationEffect(.degrees(45))
                 }
                 .shadow(color: .black.opacity(0.5), radius: 2.5, y: 1)
-            Text("\(number)")
+            Text(verbatim: "\(number)")
                 .font(.system(size: max(8, size * 0.32), weight: .bold, design: .rounded))
                 .foregroundStyle(color.contrastingText)
         }
@@ -1298,10 +1302,10 @@ struct ContrastProfileView: View {
                 ContrastBar(value: strength, after: after)
                     .frame(height: 6)
                 HStack(spacing: 0) {
-                    Text("\(Int((strength * 100).rounded()))")
+                    Text(verbatim: "\(Int((strength * 100).rounded()))")
                     if let after {
                         let progress = aim.map { ContrastProfile.progress(from: strength, to: after, toward: $0.aim) } ?? 0
-                        Text(" → \(Int((after * 100).rounded()))")
+                        Text(verbatim: " → \(Int((after * 100).rounded()))")
                             .foregroundStyle(progress > 0 ? Color.green : progress < 0 ? Color.red : Color.primary)
                     }
                 }
@@ -1414,7 +1418,7 @@ struct GradingStep<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("\(number)")
+                Text(verbatim: "\(number)")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.white)
                     .frame(width: 18, height: 18)
